@@ -199,7 +199,12 @@ const LS = {
 };
 const cfg = Object.assign({owner:"Pinghsuanlin", repo:"gym-log", branch:"main", token:"", user:"user1"}, LS.get("gt_cfg",{}));
 function saveCfg(){ LS.set("gt_cfg", cfg); }
-const USERS = {user1:"User 1", user2:"User 2"};
+const DEFAULT_USERS = {user1:"User 1", user2:"User 2"};
+const USERS = Object.assign({}, DEFAULT_USERS, LS.get(`gt_names_${cfg.owner}_${cfg.repo}`, {}));
+function applyNames(obj){
+  for(const k of Object.keys(DEFAULT_USERS)){ const v=(obj&&typeof obj[k]==="string")?obj[k].trim():""; USERS[k]= v || DEFAULT_USERS[k]; }
+  LS.set(`gt_names_${cfg.owner}_${cfg.repo}`, USERS);
+}
 
 const paths = u => ({routines:`routines/${u}.json`, logs:`logs/${u}.csv`, body:`body/${u}.csv`});
 
@@ -278,7 +283,8 @@ async function sync(){
   const p=paths(cfg.user);
   try{
     await flushQueue();
-    const [rt, lg, bd] = await Promise.all([ghGet(p.routines), ghGet(p.logs), ghGet(p.body)]);
+    const [rt, lg, bd, pp] = await Promise.all([ghGet(p.routines), ghGet(p.logs), ghGet(p.body), ghGet("people.json")]);
+    if(pp){ try{ applyNames(JSON.parse(pp.text)); }catch(e){} }
     if(rt){ store.routines=JSON.parse(rt.text); store.routinesSha=rt.sha; }
     store.logs = lg ? csvParse(lg.text) : [];
     store.body = bd ? csvParse(bd.text) : [];
@@ -317,7 +323,7 @@ window.addEventListener("online", ()=>{ flushQueue().then(()=>render()); });
 /* ========= UI HELPERS ========= */
 const $ = s=>document.querySelector(s);
 const esc = s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3200); }
+function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3200); }
 function setBar(html){ $("#barhost").innerHTML = html ? `<div class="bar"><div class="wrap">${html}</div></div>` : ""; }
 function plate(kg){ const c=plateClass(kg); const bg=c==="pother"?"var(--pother)":`var(--${c})`; const fg=c==="pother"?"#fff":`var(--${c}-ink)`; return `<span class="plate" style="background:${bg};color:${fg}" aria-hidden="true">${esc(fmtKg(kg))}</span>`; }
 function dayById(id){ return (store.routines?.days||[]).find(d=>d.id===id); }
@@ -341,7 +347,7 @@ function topbar(title, back){
   return `<header class="top">${back?`<button class="iconbtn" data-go="${back}" aria-label="Back">‹ Back</button>`:""}<h1>${esc(title)}</h1>${!back?`<button class="iconbtn" data-go="settings" aria-label="Settings">Settings</button>`:""}</header>`;
 }
 function userSwitch(){
-  return `<div class="userswitch" role="group" aria-label="Who is training">${Object.entries(USERS).map(([k,v])=>`<button data-user="${k}" aria-pressed="${cfg.user===k}">${v}</button>`).join("")}</div>`;
+  return `<div class="userswitch" role="group" aria-label="Who is training">${Object.entries(USERS).map(([k,v])=>`<button data-user="${k}" aria-pressed="${cfg.user===k}">${esc(v)}</button>`).join("")}</div>`;
 }
 function renderHome(){
   setBar("");
@@ -555,6 +561,10 @@ function renderSettings(first){
     <p><button class="btn primary" data-act="savecfg" style="width:100%">Connect and sync</button></p>
     <p id="s_msg" class="err" role="alert"></p>
   </div>
+  ${!first?`<div class="card"><label class="f" for="n_user1">Name for ${esc(DEFAULT_USERS.user1)}</label><input class="t" id="n_user1" value="${esc(USERS.user1)}" maxlength="24">
+    <label class="f" for="n_user2">Name for ${esc(DEFAULT_USERS.user2)}</label><input class="t" id="n_user2" value="${esc(USERS.user2)}" maxlength="24">
+    <p class="sub">Both phones show these names. Logs stay in the same files, so renaming never affects past workouts.</p>
+    <p><button class="btn" data-act="savenames" style="width:100%">Save names</button></p></div>`:""}
   ${!first?`<div class="card"><p class="sub">${store.synced?`Last synced ${new Date(store.synced).toLocaleString()}`:"Not synced yet"} · ${queue().length} waiting to upload</p><div class="links"><button class="btn" data-act="syncnow">Sync now</button><button class="btn danger" data-act="forget">Remove token from this phone</button></div></div>`:""}`;
 }
 async function saveCfg2(){
@@ -565,6 +575,16 @@ async function saveCfg2(){
     if(!f){ msg.textContent=`Connected, but ${paths(cfg.user).routines} is missing from ${cfg.repo}. Upload the gym-log files first.`; return; }
     loadCache(); await sync(); edit=null; toast("Connected to GitHub"); location.hash="home"; render();
   }catch(e){ msg.textContent=e.message; }
+}
+
+async function saveNames(){
+  const next={user1:$("#n_user1").value.trim()||DEFAULT_USERS.user1, user2:$("#n_user2").value.trim()||DEFAULT_USERS.user2};
+  const btn=document.querySelector('[data-act="savenames"]'); if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+  try{
+    const cur=await ghGet("people.json");
+    await ghPut("people.json", JSON.stringify(next,null,2)+"\n", cur?cur.sha:undefined, "Rename users");
+    applyNames(next); toast("Names saved"); renderSettings(false);
+  }catch(e){ toast(navigator.onLine? e.message : "No connection. Names are saved online only; try again with signal."); if(btn){ btn.disabled=false; btn.textContent="Save names"; } }
 }
 
 /* ========= EVENTS ========= */
@@ -591,6 +611,7 @@ document.addEventListener("click", async ev=>{
   if(a==="same"){ const last=sessionsFor(store.logs,t.dataset.ex)[0]; if(last){ draft.ex[t.dataset.ex]=last.sets.map(s=>({kg:s.kg,reps:s.reps||"",seconds:s.seconds||""})); saveDraft(); renderDay(draftDay);} return; }
   if(a==="savebody") return saveBody();
   if(a==="savecfg") return saveCfg2();
+  if(a==="savenames") return saveNames();
   if(a==="syncnow"){ toast("Syncing…"); await sync(); toast(store.error||"Synced"); render(); return; }
   if(a==="forget"){ if(confirm("Remove the token from this phone? Your logs on GitHub stay safe.")){ cfg.token=""; saveCfg(); render(); } return; }
   if(a==="edsave") return saveRoutines();
