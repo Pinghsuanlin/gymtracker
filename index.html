@@ -66,12 +66,15 @@ header.top h1{font-family:var(--num);font-weight:700;font-size:28px;line-height:
 details.cues{margin:6px 12px 0;font-size:14px;color:var(--muted)}
 details.cues summary{cursor:pointer;color:var(--ink);font-weight:600;min-height:32px;display:flex;align-items:center}
 .sets{padding:8px 12px 12px;display:grid;gap:8px}
-.set{display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center}
+.set{display:grid;grid-template-columns:26px minmax(0,1fr) minmax(0,1fr) 44px;gap:6px;align-items:center}
+.set>*{min-width:0}
+.check{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--paper);font-size:22px;font-weight:700;color:var(--muted);padding:0}
+.check[aria-pressed="true"]{background:var(--good);border-color:var(--good);color:#fff}
 .set .lbl{font-family:var(--num);font-weight:600;font-size:18px;color:var(--muted)}
-.kg{display:flex;align-items:center;gap:6px}
-.plate{min-width:46px;height:40px;border-radius:999px;display:grid;place-items:center;font-family:var(--num);font-weight:700;font-size:20px;padding:0 10px;border:1px solid rgba(0,0,0,.12)}
-.kg select{flex:1;min-width:0;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--paper);padding:0 6px;font-size:16px}
-.stepper{display:grid;grid-template-columns:40px 1fr 40px;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden;height:44px;background:var(--paper)}
+.kg{display:flex;align-items:center;gap:5px;min-width:0}
+.plate{flex:0 0 auto;min-width:36px;height:36px;border-radius:999px;display:grid;place-items:center;font-family:var(--num);font-weight:700;font-size:17px;padding:0 6px;border:1px solid rgba(0,0,0,.12)}
+.kg select{flex:1 1 auto;width:100%;min-width:0;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--paper);padding:0 6px;font-size:16px}
+.stepper{display:grid;grid-template-columns:32px minmax(26px,1fr) 32px;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden;height:44px;background:var(--paper)}
 .stepper button{border:0;background:transparent;height:44px;font-size:22px;font-weight:600}
 .stepper input{width:100%;border:0;background:transparent;text-align:center;font-family:var(--num);font-size:22px;font-weight:700;height:44px;padding:0}
 .stepper input::placeholder{color:var(--muted);opacity:.55}
@@ -123,6 +126,14 @@ textarea.t{min-height:72px}
 .kpi b{display:block;font-family:var(--num);font-size:28px;line-height:1.1}
 .kpi span{font-size:12px;color:var(--muted)}
 h2.sec{font-size:17px;margin:4px 0 6px}
+.libitem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.libitem:first-child{border-top:0}
+[data-act="addcat"][aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+.edset{display:grid;grid-template-columns:52px 1fr 1fr auto;gap:8px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.edset:first-child{border-top:0} .edset.gone{opacity:.45} .edset.gone input{text-decoration:line-through}
+.mini{display:block;font-size:12px;color:var(--muted)} .mini input{margin-top:2px}
+.linkbtn{border:0;background:none;color:var(--accent);font-weight:600;padding:0 4px;font-size:inherit;text-decoration:underline;min-height:28px}
+.edcell{width:60px;text-align:right}
 .planline{font-family:var(--num);font-weight:600;font-size:18px;color:var(--accent);margin:6px 0 0}
 .banner{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:14px;padding:12px 14px;margin:10px 0}
 .banner.warn{border-left-color:var(--warn)} .banner.calm{border-left-color:var(--good)}
@@ -329,9 +340,74 @@ const AREA={lat_pulldown:"upper",chest_press:"upper",face_pull:"upper",pec_fly:"
  incline_walk:"cardio",easy_run:"cardio",interval_run:"cardio",bike_intervals:"cardio",jumping_jacks:"cardio"};
 const PRESETS=[
  {name:"Elliptical warm-up",zh:"橢圓機暖身",mode:"cardio",target:8,area:"cardio"},
+ {name:"Stair climber",zh:"樓梯機",mode:"cardio",target:6,area:"cardio"},
  {name:"Bike warm-up",zh:"飛輪暖身",mode:"cardio",target:8,area:"cardio"},
+ {name:"Rowing machine",zh:"划船機暖身",mode:"cardio",target:6,area:"cardio"},
  {name:"Treadmill walk",zh:"跑步機快走",mode:"cardio",target:10,area:"cardio"},
+ {name:"Light jog",zh:"慢跑暖身",mode:"cardio",target:8,area:"cardio"},
+ {name:"Jump rope",zh:"跳繩",mode:"cardio",target:4,area:"cardio"},
+ {name:"Band warm-up",zh:"彈力帶暖身",mode:"cardio",target:5,area:"other"},
  {name:"Mobility and stretching",zh:"活動度與伸展",mode:"cardio",target:5,area:"other"}];
+/* Built-in library for "Add to today". equip says how to log the weight. Lower-body picks favour glutes and hamstrings. */
+const L=(id,name,zh,area,mode,o)=>Object.assign({id,name,zh,area,mode},o);
+const LIBRARY=[
+ // upper
+ L("db_bench_press","Dumbbell bench press","啞鈴臥推","upper","progress",{sets:3,repMin:8,repMax:12,equip:"dumbbell",steps:[5,7.5,10,12.5,15],start:7.5,cues:"Feet flat, shoulder blades squeezed together. Lower to chest level with elbows about 45° from the body.",safety:"Don't flare the elbows out to 90°.\\nControl the bottom of the rep; no bouncing."}),
+ L("incline_db_press","Incline dumbbell press","上斜啞鈴臥推","upper","progress",{sets:3,repMin:8,repMax:12,equip:"dumbbell",steps:[5,7.5,10,12.5],start:5,photo:"incline_press.jpg",cues:"Bench at about 30°. Press up and slightly in, lower to the upper chest.",safety:"Keep the elbows about 45° from the body.\\nLower slowly; don't let the dumbbells drop."}),
+ L("push_up","Push-up","伏地挺身","upper","bodyweight",{sets:3,repMin:6,repMax:12,equip:"bodyweight",cues:"Hands under the shoulders, body in one straight line. Hands on a bench makes it easier.",safety:"Don't let the hips sag.\\nElbows about 45° from the body, not flared."}),
+ L("db_row","One-arm dumbbell row","單手啞鈴划船","upper","progress",{sets:3,repMin:10,repMax:12,equip:"dumbbell",steps:[7.5,10,12.5,15,17.5,20],start:10,cues:"Hand and knee on a bench, flat back. Pull the elbow toward the hip.",safety:"Don't twist the torso to lift.\\nKeep the shoulder away from the ear."}),
+ L("chest_supported_row","Chest-supported row","胸靠划船","upper","progress",{sets:3,repMin:8,repMax:12,equip:"machine",steps:[15,20,25,30,35],start:20,cues:"Chest on the pad, pull the handles to the ribs and squeeze the shoulder blades.",safety:"Keep the chest on the pad; don't lean back to finish.\\nNo jerking."}),
+ L("db_shoulder_press","Seated dumbbell shoulder press","坐姿啞鈴肩推","upper","progress",{sets:3,repMin:8,repMax:12,equip:"dumbbell",steps:[2.5,5,7.5,10],start:5,cues:"Back against the bench, wrists over elbows. Press up without arching.",safety:"Don't arch the lower back.\\nStop a little lower if the shoulder pinches."}),
+ L("cable_lateral_raise","Cable lateral raise","繩索側平舉","upper","progress",{sets:3,repMin:12,repMax:15,equip:"machine",steps:[2.5,5,7.5,10],start:2.5,cues:"Cable at the bottom, raise the arm out to shoulder height, slight elbow bend.",safety:"Stop at shoulder height.\\nNo swinging the body."}),
+ L("rear_delt_fly","Dumbbell rear delt fly","啞鈴反向飛鳥","upper","progress",{sets:3,repMin:12,repMax:15,equip:"dumbbell",steps:[1,2,2.5,4,5],start:2,cues:"Hinge forward with a flat back, raise the arms out to the sides.",safety:"Keep it light; heavy weights turn it into a swing.\\nDon't shrug."}),
+ L("band_pull_apart","Band pull-apart","彈力帶拉開","upper","bodyweight",{sets:3,repMin:15,repMax:20,equip:"band",cues:"Arms straight in front, pull the band apart to the chest by squeezing the shoulder blades.",safety:"Ribs down; don't arch the back.\\nUse a lighter band if the shoulders shrug."}),
+ L("db_curl","Dumbbell biceps curl","啞鈴二頭彎舉","upper","progress",{sets:3,repMin:10,repMax:12,equip:"dumbbell",steps:[2.5,5,7.5,10],start:5,cues:"Elbows at the sides, curl up, lower slowly.",safety:"No swinging.\\nWrists straight."}),
+ L("hammer_curl","Hammer curl","錘式彎舉","upper","progress",{sets:3,repMin:10,repMax:12,equip:"dumbbell",steps:[2.5,5,7.5,10],start:5,cues:"Palms facing each other, elbows at the sides.",safety:"No swinging.\\nLower slowly."}),
+ L("overhead_triceps","Overhead cable triceps extension","繩索過頭三頭伸展","upper","progress",{sets:3,repMin:10,repMax:15,equip:"machine",steps:[5,7.5,10,12.5,15],start:7.5,cues:"Face away from the cable, rope behind the head, straighten the arms overhead.",safety:"Keep the elbows pointing forward.\\nRibs down; don't arch."}),
+ L("bench_dip","Bench dip","椅子撐體","upper","bodyweight",{sets:3,repMin:8,repMax:12,equip:"bodyweight",cues:"Hands on a bench behind you, bend the elbows to about 90°.",safety:"Stop if the front of the shoulder hurts.\\nDon't go deeper than 90° at the elbow."}),
+ L("cable_fly","Cable fly","繩索夾胸","upper","progress",{sets:3,repMin:12,repMax:15,equip:"machine",steps:[2.5,5,7.5,10],start:5,cues:"Soft elbows, bring the handles together in front of the chest.",safety:"Don't let the arms go behind the body line.\\nControl the stretch."}),
+ // lower: glute and hamstring focused
+ L("glute_bridge","Glute bridge","臀橋","lower","bodyweight",{sets:3,repMin:12,repMax:15,equip:"bodyweight",cues:"Lying on your back, feet flat, drive through the heels and squeeze the glutes at the top.",safety:"Ribs down; don't arch the lower back at the top."}),
+ L("single_leg_bridge","Single-leg glute bridge","單腳臀橋","lower","bodyweight",{sets:3,repMin:10,repMax:12,equip:"bodyweight",cues:"One foot down, the other leg up. Drive through the heel. Reps per side.",safety:"Keep the hips level.\\nStop if the hamstring cramps; shorten the range."}),
+ L("cable_pull_through","Cable pull-through","繩索髖伸","lower","steady",{sets:3,repMin:12,repMax:15,equip:"machine",steps:[10,15,20,25,30],start:15,cues:"Face away from a low cable, rope between the legs. Push the hips back, then stand up by squeezing the glutes.",safety:"Bend at the hips, not the back.\\nDon't lean back at the top."}),
+ L("cable_kickback","Cable glute kickback","繩索後踢臀","lower","steady",{sets:2,repMin:12,repMax:15,equip:"machine",steps:[2.5,5,7.5,10],start:5,photo:"cable_kickback.jpg",cues:"Lean forward slightly and kick straight back, moving only at the hip.",safety:"Don't arch the lower back to kick higher."}),
+ L("clamshell","Banded clamshell","彈力帶蚌殼式","lower","bodyweight",{sets:2,repMin:15,repMax:20,equip:"band",cues:"On your side, knees bent, open the top knee without rolling the hips back. Reps per side.",safety:"Keep the hips stacked; small range is fine."}),
+ L("lateral_band_walk","Lateral band walk","彈力帶側走","lower","bodyweight",{sets:2,repMin:12,repMax:15,equip:"band",cues:"Band above the knees, slight squat, step sideways. Steps each way.",safety:"Keep the knees pushed out, not caving in."}),
+ L("donkey_kick","Donkey kick","驢踢","lower","bodyweight",{sets:2,repMin:12,repMax:15,equip:"bodyweight",cues:"On hands and knees, push one foot up toward the ceiling, knee bent. Reps per side.",safety:"Don't arch the lower back; move only at the hip."}),
+ L("kettlebell_swing","Kettlebell swing","壺鈴擺盪","lower","steady",{sets:3,repMin:12,repMax:15,equip:"kettlebell",steps:[6,8,10,12,16],start:8,cues:"Hinge at the hips, then snap them forward so the bell floats to chest height.",safety:"It's a hip hinge, not a squat or an arm lift.\\nKeep the back flat."}),
+ // core
+ L("bird_dog","Bird dog","鳥狗式","core","bodyweight",{sets:3,repMin:8,repMax:10,equip:"bodyweight",cues:"On hands and knees, reach the opposite arm and leg out long, pause, return. Reps per side.",safety:"Keep the back flat; don't lift the leg too high."}),
+ L("hollow_hold","Hollow body hold","空心支撐","core","time",{sets:3,repMin:20,repMax:30,equip:"bodyweight",cues:"Lower back pressed down, arms and legs reaching away.",safety:"If the lower back lifts, bend the knees in."}),
+ L("pallof_press","Pallof press","抗旋轉推","core","progress",{sets:3,repMin:10,repMax:12,equip:"machine",steps:[2.5,5,7.5,10],start:5,cues:"Side-on to a cable at chest height, press the handle straight out and resist the twist. Reps per side.",safety:"Don't let the body rotate toward the cable."}),
+ L("cable_crunch","Cable crunch","繩索捲腹","core","progress",{sets:3,repMin:12,repMax:15,equip:"machine",steps:[10,15,20,25,30],start:15,cues:"Kneeling, rope by the head, curl the ribs toward the hips.",safety:"Move the spine, not the hips.\\nDon't pull with the arms."}),
+ L("knee_raise","Hanging knee raise","懸垂抬膝","core","bodyweight",{sets:3,repMin:8,repMax:12,equip:"bodyweight",cues:"Hanging or on the captain's chair, bring the knees up and curl the hips slightly.",safety:"No swinging.\\nLower slowly."}),
+ L("bear_hold","Bear plank hold","熊爬支撐","core","time",{sets:3,repMin:20,repMax:40,equip:"bodyweight",cues:"On hands and toes, knees an inch off the floor, back flat.",safety:"Hands under the shoulders.\\nStop when the back starts to sag."}),
+ // cardio and conditioning
+ L("stair_climber","Stair climber","樓梯機","cardio","cardio",{target:15,cues:"Upright posture, light grip on the rails, steady pace.",safety:"Don't lean on the handrails.\\nIt works the calves and glutes hard; keep it moderate for leaner legs."}),
+ L("rowing_machine","Rowing machine","划船機","cardio","cardio",{target:10,cues:"Legs, then lean back slightly, then arms; reverse on the way forward.",safety:"Keep the back straight; don't round to reach."}),
+ L("jump_rope","Jump rope","跳繩","cardio","cardio",{target:5,cues:"Small, quick jumps on the balls of the feet.",safety:"Land softly.\\nBuild up slowly; calves and shins need time."}),
+ L("battle_ropes","Battle ropes","戰繩","cardio","time",{sets:4,repMin:20,repMax:30,equip:"bodyweight",cues:"Athletic stance, make waves with alternating arms.",safety:"Keep the back neutral; bend the knees, not the waist."}),
+ L("burpee","Burpee","波比跳","cardio","bodyweight",{sets:3,repMin:8,repMax:12,equip:"bodyweight",cues:"Squat, hands down, step or jump back to a plank, return and stand.",safety:"Step back instead of jumping if the wrists or back complain."}),
+ // mobility
+ L("cat_cow","Cat-cow","貓牛式","other","bodyweight",{sets:2,repMin:8,repMax:10,equip:"bodyweight",cues:"On hands and knees, slowly round then arch the back.",safety:"Move gently, within a comfortable range."}),
+ L("worlds_greatest_stretch","World's greatest stretch","世界最偉大伸展","other","bodyweight",{sets:2,repMin:5,repMax:6,equip:"bodyweight",cues:"Lunge forward, elbow toward the instep, then rotate and reach up. Reps per side.",safety:"Keep the front knee over the foot."}),
+ L("open_book","Open-book rotation","胸椎旋轉","other","bodyweight",{sets:2,repMin:8,repMax:10,equip:"bodyweight",cues:"Lying on your side, knees bent, open the top arm across to the other side.",safety:"Keep the knees together; rotate the upper back, not the lower."}),
+ L("hip_flexor_stretch","Hip flexor stretch","髖屈肌伸展","other","time",{sets:2,repMin:30,repMax:45,equip:"bodyweight",cues:"Half-kneeling, squeeze the glute of the back leg and shift forward gently. Seconds per side.",safety:"Don't arch the lower back to go further."}),
+ L("band_pass_through","Band shoulder pass-through","彈力帶肩繞環","other","bodyweight",{sets:2,repMin:10,repMax:12,equip:"band",cues:"Arms straight, wide grip, bring the band over the head and behind.",safety:"Widen the grip if it pinches; never force it."}),
+ L("foam_rolling","Foam rolling","滾筒放鬆","other","cardio",{target:5,cues:"Roll slowly over tight areas; pause on tender spots.",safety:"Avoid rolling directly on joints or the lower back."})
+];
+/* how to log the weight, by equipment */
+const EQUIP={lateral_raise:"dumbbell", goblet_squat:"dumbbell1", bar_curl:"barbell"};
+const EQUIP_TEXT={
+ machine:["Machine or cable","Log the number on the weight stack. Ignore the machine's own weight; it's the same every time."],
+ plate:["Plate-loaded machine","Log only the plates you add, both sides together. Not the machine's own weight."],
+ dumbbell:["Dumbbells","Log one dumbbell's weight (per hand). 5 kg in each hand = 5."],
+ dumbbell1:["One dumbbell","Log the weight of the dumbbell you hold."],
+ kettlebell:["Kettlebell","Log the kettlebell's weight."],
+ barbell:["Barbell","Log the bar plus plates. Fixed-weight bars show the total."],
+ bodyweight:["Bodyweight","Log reps. If you add weight, log only the added weight."],
+ band:["Band","Log reps only."]};
+function equipOf(ex){ return (ex && (ex.equip || EQUIP[ex.id])) || ((ex && (ex.mode==="progress"||ex.mode==="steady")) ? "machine" : (ex && ex.mode==="bodyweight") ? "bodyweight" : ""); }
 const GENERIC_SAFETY=["Warm up for 5–10 minutes first.","Sharp or joint pain means stop; normal muscle burn is fine.","Use a weight you can control on the way down, not just up.","Breathe out as you push or pull; don't hold your breath."];
 const SAFETY={
  lat_pulldown:["Never pull the bar behind the neck.","Don't lean back more than a little; it turns into a row and strains the lower back.","Let the bar up slowly; don't let the stack yank your shoulders."],
@@ -363,7 +439,7 @@ const SAFETY={
  bike_intervals:["Seat height: a slight bend in the knee at the bottom.","Keep the back long; no hunching over the bars."],
  cable_kickback:["Move only at the hip; don't arch the lower back to kick higher.","Keep the standing knee soft."]
 };
-function safetyFor(ex){ if(ex && ex.safety && ex.safety.trim()) return ex.safety.split(/\n+/).map(x=>x.trim()).filter(Boolean); return (ex && SAFETY[ex.id]) || GENERIC_SAFETY; }
+function safetyFor(ex){ if(ex && ex.safety && ex.safety.trim()) return ex.safety.split(/\n+/).map(x=>x.trim()).filter(Boolean); const lib=ex && LIBRARY.find(x=>x.id===ex.id); if(lib && lib.safety) return lib.safety.split(/\n+/); return (ex && SAFETY[ex.id]) || GENERIC_SAFETY; }
 
 /* ========= STORAGE & GITHUB ========= */
 const LS = {
@@ -386,7 +462,9 @@ async function gh(path, opts={}){
   const url=`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${path.split("/").map(encodeURIComponent).join("/")}`;
   const headers = Object.assign({"Authorization":`Bearer ${cfg.token}`,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}, opts.headers||{});
   const q = opts.method && opts.method!=="GET" ? "" : `?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`;
-  return fetch(url+q, {method:opts.method||"GET", headers, body:opts.body, cache:"no-store"});
+  const r = await fetch(url+q, {method:opts.method||"GET", headers, body:opts.body, cache:"no-store"});
+  try{ const x=r.headers.get("github-authentication-token-expiration"); if(x){ const d=x.slice(0,10); if(/^\d{4}-\d{2}-\d{2}$/.test(d) && d!==cfg.tokenExpires){ cfg.tokenExpires=d; saveCfg(); } } }catch(e){}
+  return r;
 }
 async function ghGet(path){
   const r=await gh(path);
@@ -403,7 +481,7 @@ async function ghPut(path, text, sha, message){
 }
 async function ghError(r){
   let msg=""; try{ msg=(await r.json()).message||""; }catch(e){}
-  if(r.status===401) return "GitHub rejected the token. Check it in Settings.";
+  if(r.status===401) return "GitHub rejected the token. It may have expired: on GitHub open Settings → Developer settings → Fine-grained tokens, regenerate it, then paste the new one in this app's Settings.";
   if(r.status===403) return "The token can't access this repository. Give it Contents: read and write on "+cfg.repo+".";
   if(r.status===404) return "Repository or file not found. Check the owner and repository name in Settings.";
   return `GitHub error ${r.status}${msg?": "+msg:""}`;
@@ -417,6 +495,23 @@ async function ghAppendCsv(path, header, lines, message){
     catch(e){ if(e.status===409||e.status===422) continue; throw e; }
   }
   throw new Error("Couldn't save after 3 tries because the file kept changing. Try again.");
+}
+async function ghRewriteCsv(path, header, mutate, message){
+  const cols=header.split(",");
+  for(let attempt=0; attempt<3; attempt++){
+    const f=await ghGet(path); if(!f) throw new Error("File not found on GitHub.");
+    const rows=mutate(csvParse(f.text));
+    const text=header+"\n"+rows.map(r=>csvLine(cols.map(c=>r[c]??""))).join("\n")+(rows.length?"\n":"");
+    try{ await ghPut(path, text, f.sha, message); return text; }
+    catch(e){ if(e.status===409||e.status===422) continue; throw e; }
+  }
+  throw new Error("Couldn't save after 3 tries because the file kept changing. Try again.");
+}
+async function readyToEdit(){
+  if(!navigator.onLine){ toast("Editing needs a connection. Try again with signal."); return false; }
+  if(queue().length){ try{ await flushQueue(); }catch(e){} }
+  if(queue().length){ toast("Some entries are still waiting to upload. Sync first, then edit."); return false; }
+  return true;
 }
 async function ghImageURL(name){
   if(!name) return null;
@@ -516,6 +611,8 @@ function render(){
   if(view==="history") return renderHistory(arg);
   if(view==="add") return renderAdd(arg, parts[2]||"end");
   if(view==="progress") return renderProgress();
+  if(view==="editlog") return renderEditLog(arg, parts[2]);
+  if(view==="editbody") return renderEditBody(arg, parts[2]||"0");
   if(view==="body") return renderBody();
   if(view==="edit") return renderEdit(arg);
   if(view==="settings") return renderSettings(false);
@@ -534,6 +631,7 @@ function renderHome(){
   $("#app").innerHTML = `${topbar("Gym log")}
   ${userSwitch()}
   <p class="status ${store.error?"bad":""}">${store.error?esc(store.error):(store.synced?`Synced with GitHub ${niceDate(store.synced.slice(0,10))}`:"Not synced yet")}${q?` · ${q} workout${q>1?"s":""} waiting to upload`:""}</p>
+  ${tokenBanner()}
   ${(()=>{ if(!store.routines) return ""; const ps=planState(); return `<p class="planline">Week ${ps.week} · ${esc(ps.stage.name)} · ${esc(ps.stage.zh)}${ps.active?" · lighter week":""}</p>${planBanners(ps)}`; })()}
   ${days.length? `<div class="days">${days.map(d=>{ const last=lastDateForDay(d.id); return `<button class="day ${d.when===wd?"today":""}" data-go="day/${d.id}"><span class="when">${esc(d.when||"")}</span><span><span class="name">${esc(d.name)}</span><br><span class="zh">${esc(d.zh||"")} · ${d.exercises.length} exercise${d.exercises.length>1?"s":""}</span></span><span class="last">${last?"Last<br>"+niceDate(last):"Not done<br>yet"}</span></button>`; }).join("")}</div>`
    : `<p class="empty">No routine loaded. Check Settings, then pull to refresh.</p>`}
@@ -600,16 +698,18 @@ function exerciseCard(ex){
   if((ex.mode==="cardio"||ex.mode==="intervals") && !sets.length){
     rows = "";
   } else if(ex.mode==="cardio"){
-    rows = `<div class="set"><span class="lbl">min</span>${stepper(ex.id,0,"seconds",sets[0]?.seconds,"Minutes",last?Math.round(last.sets[0].seconds/60):ex.target,1)}<span></span></div>`;
+    const ph=last?Math.round(last.sets[0].seconds/60):ex.target;
+    rows = `<div class="set"><span class="lbl">min</span><span></span>${stepper(ex.id,0,"seconds",sets[0]?.seconds,"Minutes",ph,1)}${checkBtn(ex.id,0,"seconds",sets[0]?.seconds,ph*60)}</div>`;
   } else if(ex.mode==="intervals"){
-    rows = `<div class="set"><span class="lbl">rds</span>${stepper(ex.id,0,"reps",sets[0]?.reps,"Rounds",last?last.sets[0].reps:ex.target,1)}<span></span></div>`;
+    const ph=last?last.sets[0].reps:ex.target;
+    rows = `<div class="set"><span class="lbl">rds</span><span></span>${stepper(ex.id,0,"reps",sets[0]?.reps,"Rounds",ph,1)}${checkBtn(ex.id,0,"reps",sets[0]?.reps,ph)}</div>`;
   } else {
     rows = sets.map((s,i)=>{
       const lastSet = last?.sets[off+i];
-      const ph = ex.mode==="time" ? (lastSet?lastSet.seconds:ex.repMin) : (lastSet?lastSet.reps:ex.repMax);
+      const ph = ex.mode==="time" ? (lastSet?lastSet.seconds:ex.repMin) : (lastSet?lastSet.reps:ex.repMin);
       const field = ex.mode==="time" ? "seconds" : "reps";
-      const kgSel = (ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight") ? weightSelect(ex,i,s.kg) : `<span></span>`;
-      return `<div class="set"><span class="lbl">${off+i+1}</span>${kgSel}${stepper(ex.id,i,field,s[field],ex.mode==="time"?"Seconds":"Reps",ph, ex.mode==="time"?5:1)}</div>`;
+      const kgSel = ((ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight") && equipOf(ex)!=="band") ? weightSelect(ex,i,s.kg) : `<span></span>`;
+      return `<div class="set"><span class="lbl">${off+i+1}</span>${kgSel}${stepper(ex.id,i,field,s[field],ex.mode==="time"?"Seconds":"Reps",ph, ex.mode==="time"?5:1)}${checkBtn(ex.id,i,field,s[field],ph)}</div>`;
     }).join("");
   }
   const multi = !(ex.mode==="cardio"||ex.mode==="intervals");
@@ -617,9 +717,9 @@ function exerciseCard(ex){
   return `<section class="ex" aria-label="${esc(ex.name)}">
     <div class="exhead"><button class="thumb ${cachedImg(ex.photo)?"":"empty"}" data-thumb="${ex.id}" data-tips="${esc(ex.id)}" aria-label="Photo and tips for ${esc(ex.name)}">${cachedImg(ex.photo)?`<img class="thumb" src="${cachedImg(ex.photo)}" alt="">`:(ex.photo?"…":"Tips")}</button>
       <div><div class="exname">${esc(ex.name)}${isExtra?` <span class="tag">Extra today</span>`:""}</div><div class="zh">${esc(ex.zh||"")}</div>
-      <div class="target">${esc(light && ex.mode!=="cardio" && ex.mode!=="intervals" ? targetText({...ex, sets:Math.max(1,Math.ceil((ex.sets||1)/2))})+" · lighter" : targetText(ex))}</div><div class="lasttime">${esc(lastTxt)}</div></div></div>
+      <div class="target">${esc(light && ex.mode!=="cardio" && ex.mode!=="intervals" ? targetText({...ex, sets:Math.max(1,Math.ceil((ex.sets||1)/2))})+" · lighter" : targetText(ex))}${equipOf(ex)==="dumbbell"?` <span class="tag">kg per hand</span>`:""}</div><div class="lasttime">${esc(lastTxt)}</div></div></div>
     <div class="tip ${adv.kind==="up"?"up":""}">${esc(adv.text)}</div>
-    ${off?`<p class="saved">✓ Saved ${draft.date===localISO()?"today":"for this date"}: ${esc(done.map(s=> ex.mode==="time"?`${s.seconds}s`: ex.mode==="cardio"?`${Math.round(s.seconds/60)} min`: ex.mode==="intervals"?`${s.reps} rounds`: (s.kg?`${fmtKg(s.kg)}×${s.reps}`:`${s.reps}`)).join(", "))}</p>`:""}
+    ${off?`<p class="saved">✓ Saved ${draft.date===localISO()?"today":"for this date"}: ${esc(done.map(s=> ex.mode==="time"?`${s.seconds}s`: ex.mode==="cardio"?`${Math.round(s.seconds/60)} min`: ex.mode==="intervals"?`${s.reps} rounds`: (s.kg?`${fmtKg(s.kg)}×${s.reps}`:`${s.reps}`)).join(", "))} <button class="linkbtn" data-go="editlog/${encodeURIComponent(ex.id)}/${draft.date}">Edit</button></p>`:""}
     ${ex.cues?`<details class="cues"><summary>Form tips</summary>${esc(ex.cues)}</details>`:""}
     <div class="sets">${rows}</div>
     <div class="setbtns">${(multi||!sets.length)?`<button class="btn small" data-act="addset" data-ex="${ex.id}">Add set</button><button class="btn small" data-act="delset" data-ex="${ex.id}">Remove set</button>`:""}${last?`<button class="btn small" data-act="same" data-ex="${ex.id}">Copy last time</button>`:""}<button class="btn small" data-go="history/${encodeURIComponent(ex.id)}">History</button>${isExtra?`<button class="btn small danger" data-act="rmextra" data-ex="${esc(ex.id)}">Remove</button>`:""}</div>
@@ -635,8 +735,14 @@ function weightSelect(ex,i,kg){
   const bw = ex.mode==="bodyweight";
   const steps=(bw ? [0, ...((ex.steps&&ex.steps.length)?ex.steps:ADD_STEPS)] : (ex.steps||[])).slice();
   if((kg||bw) && !steps.some(s=>Math.abs(s-kg)<1e-9)) steps.push(kg); steps.sort((a,b)=>a-b);
-  const label = s => bw ? (s? `+${fmtKg(s)} kg` : "Bodyweight") : `${fmtKg(s)} kg`;
+  const each = equipOf(ex)==="dumbbell";
+  const label = s => bw ? (s? `+${fmtKg(s)} kg${each?" each":""}` : "Bodyweight") : `${fmtKg(s)} kg${each?" each":""}`;
   return `<div class="kg">${plate(kg)}<select aria-label="${bw?"Added weight":"Weight"} for set ${i+1}" data-kg="${esc(ex.id)}" data-i="${i}">${steps.filter((v,j,a)=>a.findIndex(x=>Math.abs(x-v)<1e-9)===j).map(s=>`<option value="${s}" ${Math.abs(s-kg)<1e-9?"selected":""}>${label(s)}</option>`).join("")}<option value="other">Other…</option></select></div>`;
+}
+/* ✓: one tap logs the planned reps/time at the chosen weight; tap again to undo. Typing a number also counts as done. */
+function checkBtn(exId,i,field,val,planned){
+  const done = val!=="" && val!=null;
+  return `<button class="check" data-act="check" data-ex="${esc(exId)}" data-i="${i}" data-f="${field}" data-plan="${esc(planned)}" aria-pressed="${done}" aria-label="${done?"Done, tap to undo":"Mark set done as planned"}">✓</button>`;
 }
 function stepper(exId,i,field,val,label,ph,step){
   return `<div><div class="stepper"><button data-step="-${step}" data-ex="${exId}" data-i="${i}" data-f="${field}" aria-label="Less">−</button><input inputmode="decimal" aria-label="${label}, set ${i+1}" data-in="${exId}" data-i="${i}" data-f="${field}" value="${esc(field==="seconds"&&label==="Minutes"&&val!==""?Math.round(val/60):val)}" placeholder="${esc(ph)}"><button data-step="${step}" data-ex="${exId}" data-i="${i}" data-f="${field}" aria-label="More">+</button></div><div class="unit">${label.toLowerCase()}</div></div>`;
@@ -651,6 +757,7 @@ function setVal(exId,i,field,raw){
 function findEx(exId){
   for(const d of store.routines?.days||[]) for(const e of d.exercises) if(e.id===exId) return e;
   const x=(draft&&draft.extras||[]).find(x=>x.ex.id===exId); if(x) return x.ex;
+  const lib=LIBRARY.find(x=>x.id===exId); if(lib) return lib;
   if(String(exId).startsWith("x:")){
     const rows=store.logs.filter(r=>r.exercise===exId);
     const mode = rows.some(r=>num(r.kg)>0) ? "progress" : rows.some(r=>num(r.seconds)>0 && !num(r.reps)) ? "cardio" : "bodyweight";
@@ -687,7 +794,7 @@ function renderHistory(exId){
   const pts = sess.map(s=>({d:s.date, v:metric(s), total:s.sets.reduce((a,x)=>a+x.reps,0)}));
   $("#app").innerHTML = `${topbar(ex.name, draftDay?`day/${draftDay}`:"home")}<p class="sub">${esc(ex.zh||"")}</p>
   <div class="card">${pts.length>1?chart(pts,unit):`<p class="empty">${pts.length?"One session so far: the chart appears after the second.":"No sessions logged yet."}</p>`}
-  ${pts.length?`<table class="hist">${sess.slice().reverse().map(s=>`<tr><td>${niceDate(s.date)}</td><td>${s.sets.map(x=> unit==="kg"?`${fmtKg(x.kg)}×${x.reps}`: unit==="s"?`${x.seconds}s`: unit==="min"?`${Math.round(x.seconds/60)} min`:`${x.reps}`).join(", ")}</td></tr>`).join("")}</table>`:""}</div>`;
+  ${pts.length?`<table class="hist">${sess.slice().reverse().map(s=>`<tr><td>${niceDate(s.date)}</td><td>${s.sets.map(x=> unit==="kg"?`${fmtKg(x.kg)}×${x.reps}`: unit==="s"?`${x.seconds}s`: unit==="min"?`${Math.round(x.seconds/60)} min`:`${x.reps}`).join(", ")}</td><td class="edcell"><button class="btn small" data-go="editlog/${encodeURIComponent(exId)}/${s.date}">Edit</button></td></tr>`).join("")}</table>`:""}</div>`;
 }
 function chart(pts, unit){
   const W=600,H=220,P=34; const vs=pts.map(p=>p.v); let lo=Math.min(...vs), hi=Math.max(...vs); if(hi===lo){ hi+=1; lo=Math.max(0,lo-1); }
@@ -743,7 +850,7 @@ function renderBody(){
     <div><label class="f" for="pf_by">Birth year</label><input class="t" id="pf_by" inputmode="numeric" value="${esc(pr.birthYear||"")}" placeholder="1995"></div>
     <div><label class="f" for="pf_h">Height (cm)</label><input class="t" id="pf_h" inputmode="decimal" value="${esc(pr.height||"")}" placeholder="164"></div></div>
     <p><button class="btn" data-act="saveprofile" style="width:100%">Save profile</button></p></div>
-  ${rows.length?`<div class="card"><h2 class="sec">History</h2><table class="hist">${rows.slice(0,15).map(r=>`<tr><td>${niceDate(r.date)}</td><td>${[r.weight_kg&&r.weight_kg+" kg", r.body_fat_pct&&r.body_fat_pct+"% fat", r.waist_cm&&"waist "+r.waist_cm, r.hips_cm&&"hips "+r.hips_cm, r.thigh_cm&&"thigh "+r.thigh_cm].filter(Boolean).map(esc).join(" · ")}${r.notes?`<br><span class="sub">${esc(r.notes)}</span>`:""}</td></tr>`).join("")}</table></div>`:""}`;
+  ${rows.length?`<div class="card"><h2 class="sec">History</h2><table class="hist">${rows.slice(0,15).map(r=>`<tr><td>${niceDate(r.date)}<br><button class="linkbtn" data-go="editbody/${r.date}/${store.body.filter(x=>x.date===r.date).indexOf(r)}">Edit</button></td><td>${[r.weight_kg&&r.weight_kg+" kg", r.body_fat_pct&&r.body_fat_pct+"% fat", r.waist_cm&&"waist "+r.waist_cm, r.hips_cm&&"hips "+r.hips_cm, r.thigh_cm&&"thigh "+r.thigh_cm].filter(Boolean).map(esc).join(" · ")}${r.notes?`<br><span class="sub">${esc(r.notes)}</span>`:""}</td></tr>`).join("")}</table></div>`:""}`;
 }
 async function saveBody(){
   const v=id=>$(id).value.trim();
@@ -811,6 +918,14 @@ async function applyStageNow(){
   }catch(e){ toast(navigator.onLine? e.message : "No connection. Try again with signal."); }
   render();
 }
+function tokenBanner(){
+  const steps="On GitHub: profile picture → Settings → Developer settings → Fine-grained tokens → open the token → Regenerate. Then paste it here in Settings and update the expiry date.";
+  if(!cfg.tokenExpires) return `<div class="banner"><b>When does your token expire?</b><p>Add the date in Settings so the app can remind you before saving stops working.</p><button class="btn small" data-go="settings">Open Settings</button></div>`;
+  const days=Math.round((new Date(cfg.tokenExpires+"T12:00:00")-new Date(localISO()+"T12:00:00"))/864e5);
+  if(days<0) return `<div class="banner warn"><b>Your GitHub token expired on ${esc(niceDate(cfg.tokenExpires))}</b><p>Saving to GitHub won't work until you renew it. ${esc(steps)}</p><button class="btn small primary" data-go="settings">Open Settings</button></div>`;
+  if(days<=14) return `<div class="banner warn"><b>Your GitHub token expires in ${days} day${days===1?"":"s"}</b><p>${esc(steps)}</p><button class="btn small" data-go="settings">Open Settings</button></div>`;
+  return "";
+}
 function planBanners(ps){
   let h="";
   if(ps.active) h+=`<div class="banner calm"><b>Lighter week until ${esc(niceDate(ps.pr.deloadUntil))}</b><p>Half the sets at about 80% of your usual weights. Runs easy, no intervals. Your workouts are already adjusted.</p><button class="btn small" data-act="deloadend">End it early</button></div>`;
@@ -821,19 +936,40 @@ function planBanners(ps){
 
 /* ---- add an exercise to today's workout ---- */
 function cleanName(n){ return String(n||"").replace(/[,"\n\r:]/g," ").replace(/\s+/g," ").trim().slice(0,40); }
+let addFilter={q:"", cat:"all"};
+const CATS=[["all","All · 全部"],["plan","Your plan · 我的計畫"],["upper","Upper · 上半身"],["lower","Lower · 下半身"],["core","Core · 核心"],["cardio","Cardio · 有氧"],["other","Mobility · 伸展"]];
+function addCandidates(dayId){
+  const day=dayById(dayId); const have=new Set(dayList(day).map(e=>e.id)); const seen=new Set(); const out=[];
+  for(const d of store.routines.days||[]){ if(d.id===dayId) continue; for(const e of d.exercises){ if(have.has(e.id)||seen.has(e.id)) continue; seen.add(e.id); out.push({ex:e, plan:d}); } }
+  for(const e of LIBRARY){ if(have.has(e.id)||seen.has(e.id)) continue; seen.add(e.id); out.push({ex:e, plan:null}); }
+  return out;
+}
+function addListHTML(dayId){
+  const q=addFilter.q.trim().toLowerCase(), cat=addFilter.cat;
+  const items=addCandidates(dayId).filter(({ex,plan})=>{
+    const area=ex.area||AREA[ex.id]||areaOf(ex.id, plan?plan.id:"");
+    if(cat==="plan" && !plan) return false;
+    if(!["all","plan"].includes(cat) && area!==cat) return false;
+    return !q || (ex.name+" "+(ex.zh||"")).toLowerCase().includes(q);
+  });
+  if(!items.length) return `<p class="empty">Nothing matches. Add it under “Something new”.</p>`;
+  return items.map(({ex,plan})=>`<div class="libitem"><div><b>${esc(ex.name)}</b>${ex.zh?` <span class="zh">${esc(ex.zh)}</span>`:""}<br><span class="sub">${esc(targetText(ex))}${equipOf(ex)&&EQUIP_TEXT[equipOf(ex)]?" · "+esc(EQUIP_TEXT[equipOf(ex)][0]):""}${plan?` · <span class="tag">In your plan: ${esc(plan.name)}</span>`:""}</span></div><button class="btn small" data-act="addlibitem" data-id="${esc(ex.id)}">Add</button></div>`).join("");
+}
 function renderAdd(dayId, pos){
   const day=dayById(dayId); if(!day){ location.hash="home"; return; }
   if(draftDay!==dayId || !draft){ draft=initDraft(day); draftDay=dayId; }
   setBar("");
-  const have=new Set(dayList(day).map(e=>e.id));
-  const groups=(store.routines.days||[]).filter(d=>d.id!==dayId).map(d=>({d, ex:d.exercises.filter(e=>!have.has(e.id))})).filter(g=>g.ex.length);
   $("#app").innerHTML = `${topbar("Add to today","day/"+dayId)}
   <div class="card"><h2 class="sec">Quick warm-ups · 快速暖身</h2><div class="chips">${PRESETS.map((p,i)=>`<button class="btn small" data-act="addpreset" data-i="${i}">${esc(p.name)} · ${esc(p.zh)} · ${p.target} min</button>`).join("")}</div></div>
-  ${groups.length?`<div class="card"><h2 class="sec">From your other days · 其他日的動作</h2><label class="f" for="a_lib">Exercise</label><select class="t" id="a_lib">${groups.map(g=>`<optgroup label="${esc(g.d.name)}${g.d.zh?" · "+esc(g.d.zh):""}">${g.ex.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}${e.zh?" · "+esc(e.zh):""}</option>`).join("")}</optgroup>`).join("")}</select>
-   <p><button class="btn" data-act="addlib" style="width:100%">Add this</button></p></div>`:""}
+  <div class="card"><h2 class="sec">Find an exercise · 搜尋動作</h2>
+   <input class="t" id="a_q" type="search" placeholder="Search in English or 中文" value="${esc(addFilter.q)}" autocomplete="off">
+   <div class="chips" role="group" aria-label="Category">${CATS.map(([k,l])=>`<button class="btn small" data-act="addcat" data-cat="${k}" aria-pressed="${addFilter.cat===k}">${l}</button>`).join("")}</div>
+   <p class="sub">Lower-body picks focus on glutes and hamstrings, in line with a lean-legs goal.</p>
+   <div id="a_list">${addListHTML(dayId)}</div></div>
   <div class="card"><h2 class="sec">Something new · 新增動作</h2>
    <div class="row2"><div><label class="f" for="a_name">Name</label><input class="t" id="a_name" placeholder="e.g. Rowing machine" maxlength="40"></div><div><label class="f" for="a_zh">中文名稱</label><input class="t" id="a_zh" placeholder="例如 划船機" maxlength="30"></div></div>
    <label class="f" for="a_mode">Type</label><select class="t" id="a_mode"><option value="progress">With weights</option><option value="bodyweight">Bodyweight (weight can be added)</option><option value="time">Timed sets (seconds)</option><option value="cardio">Cardio (minutes)</option></select>
+   <label class="f" for="a_equip">Equipment (how the weight is logged)</label><select class="t" id="a_equip">${Object.entries(EQUIP_TEXT).map(([k,[l]])=>`<option value="${k}">${l}</option>`).join("")}</select>
    <div class="row3"><div><label class="f" for="a_sets">Sets</label><input class="t" id="a_sets" value="3" inputmode="numeric"></div><div><label class="f" for="a_min">Min reps / s</label><input class="t" id="a_min" value="10" inputmode="numeric"></div><div><label class="f" for="a_max">Max reps / s</label><input class="t" id="a_max" value="15" inputmode="numeric"></div></div>
    <p class="sub">For cardio, the min field is the target minutes.</p>
    <p><button class="btn" data-act="addnew" style="width:100%">Add this</button></p></div>
@@ -856,6 +992,75 @@ async function addToToday(ex){
   } else { draft.extras.push({ex,pos}); toast("Added for today"); }
   saveDraft(); location.hash="day/"+dayId;
 }
+/* ---- edit or delete logged sets ---- */
+function renderEditLog(exId, date){
+  const ex=findEx(exId)||{id:exId,name:exId,mode:"progress"};
+  const rows=store.logs.filter(r=>r.exercise===exId && r.date===date).sort((a,b)=>(a.day+a.set).localeCompare(b.day+b.set,undefined,{numeric:true}));
+  setBar(`<button class="btn danger" data-act="logdelall" data-ex="${esc(exId)}" data-date="${esc(date)}">Delete all</button><button class="btn primary" data-act="logsave" data-ex="${esc(exId)}" data-date="${esc(date)}">Save changes</button>`);
+  const m=ex.mode, weights=(m==="progress"||m==="steady"||m==="bodyweight");
+  const f=(cls,i,val,label)=>`<label class="mini"><span>${label}</span><input class="t" inputmode="decimal" data-ed="${cls}" data-i="${i}" value="${esc(val)}"></label>`;
+  $("#app").innerHTML = `${topbar("Edit entries","history/"+encodeURIComponent(exId))}<p class="sub">${esc(ex.name)} · ${esc(niceDate(date))}</p>
+  ${rows.length?`<div class="card">${rows.map((r,i)=>`<div class="edset" data-row="${i}"><b>Set ${esc(r.set)}</b>
+     ${weights?f("kg",i,r.kg,m==="bodyweight"?"Added kg":"kg"):""}
+     ${m==="time"?f("seconds",i,r.seconds,"Seconds"): m==="cardio"?f("minutes",i,r.seconds?Math.round(num(r.seconds)/60):"","Minutes") : f("reps",i,r.reps,m==="intervals"?"Rounds":"Reps")}
+     <button class="btn small danger" data-act="logdelrow" data-i="${i}" aria-pressed="false">Delete</button></div>`).join("")}</div>
+   <p class="sub">Deleted sets are removed when you tap Save changes. Every change is kept in GitHub's history.</p>`:`<p class="empty">No entries for this day.</p>`}`;
+}
+async function saveEditLog(exId, date, deleteAll){
+  if(!(await readyToEdit())) return;
+  const ex=findEx(exId)||{mode:"progress"};
+  const cur=store.logs.filter(r=>r.exercise===exId && r.date===date).sort((a,b)=>(a.day+a.set).localeCompare(b.day+b.set,undefined,{numeric:true}));
+  const edited=[];
+  if(!deleteAll){
+    cur.forEach((r,i)=>{
+      const box=document.querySelector(`.edset[data-row="${i}"]`); if(!box || box.classList.contains("gone")) return;
+      const val=k=>{ const el=box.querySelector(`[data-ed="${k}"]`); return el? el.value.trim() : null; };
+      const o={...r};
+      if(val("kg")!==null) o.kg=val("kg")===""?"0":fmtKg(num(val("kg")));
+      if(val("reps")!==null) o.reps=val("reps")===""?"":String(num(val("reps")));
+      if(val("seconds")!==null) o.seconds=val("seconds")===""?"":String(num(val("seconds")));
+      if(val("minutes")!==null) o.seconds=val("minutes")===""?"":String(Math.round(num(val("minutes"))*60));
+      if(num(o.reps)>0 || num(o.seconds)>0) edited.push(o);
+    });
+  }
+  // renumber sets within each day
+  const byDay={}; edited.forEach(o=>{ byDay[o.day]=(byDay[o.day]||0)+1; o.set=String(byDay[o.day]); });
+  const btn=document.querySelector('[data-act="logsave"]'); if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+  try{
+    const text=await ghRewriteCsv(paths(cfg.user).logs, CSV_LOG_HEADER, rows=>{
+      const out=[]; let placed=false;
+      for(const r of rows){ if(r.exercise===exId && r.date===date){ if(!placed){ out.push(...edited); placed=true; } } else out.push(r); }
+      return out;
+    }, `${USERS[cfg.user]}: edit ${exName(exId)} ${date}`);
+    store.logs=csvParse(text); saveCache(); draft=null; draftDay=null;
+    toast(deleteAll||!edited.length ? "Entries deleted" : "Changes saved"); location.hash="history/"+encodeURIComponent(exId);
+  }catch(e){ toast(e.message); if(btn){ btn.disabled=false; btn.textContent="Save changes"; } }
+}
+/* ---- edit or delete a body check-in ---- */
+function bodyRowAt(date, k){ let n=0; for(let i=0;i<store.body.length;i++){ if(store.body[i].date===date){ if(n===k) return store.body[i]; n++; } } return null; }
+function renderEditBody(date, k){
+  const r=bodyRowAt(date, +k); if(!r){ location.hash="body"; return; }
+  setBar(`<button class="btn danger" data-act="bodydel" data-date="${esc(date)}" data-k="${esc(k)}">Delete</button><button class="btn primary" data-act="bodysave" data-date="${esc(date)}" data-k="${esc(k)}">Save changes</button>`);
+  const f=(id,label,v)=>`<div><label class="f" for="${id}">${label}</label><input class="t" id="${id}" inputmode="decimal" value="${esc(v||"")}"></div>`;
+  $("#app").innerHTML = `${topbar("Edit check-in","body")}<p class="sub">${esc(niceDate(date))}</p>
+  <div class="card"><div class="row3">${f("eb_w","Weight (kg)",r.weight_kg)}${f("eb_bf","Body fat (%)",r.body_fat_pct)}<div><label class="f" for="eb_d">Date</label><input class="t" id="eb_d" type="date" value="${esc(r.date)}" max="${localISO()}"></div></div>
+  <div class="row3">${f("eb_wa","Waist (cm)",r.waist_cm)}${f("eb_h","Hips (cm)",r.hips_cm)}${f("eb_t","Thigh (cm)",r.thigh_cm)}</div>
+  <label class="f" for="eb_n">Notes</label><input class="t" id="eb_n" value="${esc(r.notes||"")}"></div>`;
+}
+async function saveEditBody(date, k, del){
+  if(!(await readyToEdit())) return;
+  const v=id=>$(id)?$(id).value.trim():"";
+  const repl = del ? null : {date:v("#eb_d")||date, weight_kg:v("#eb_w"), body_fat_pct:v("#eb_bf"), waist_cm:v("#eb_wa"), hips_cm:v("#eb_h"), thigh_cm:v("#eb_t"), notes:v("#eb_n")};
+  try{
+    const text=await ghRewriteCsv(paths(cfg.user).body, CSV_BODY_HEADER, rows=>{
+      const out=[]; let n=0;
+      for(const r of rows){ if(r.date===date){ if(n===+k){ n++; if(repl) out.push(repl); continue; } n++; } out.push(r); }
+      return out;
+    }, `${USERS[cfg.user]}: ${del?"delete":"edit"} check-in ${date}`);
+    store.body=csvParse(text); saveCache(); toast(del?"Check-in deleted":"Changes saved"); location.hash="body";
+  }catch(e){ toast(e.message); }
+}
+
 /* ---- photo + tips card ---- */
 async function openTips(exId){
   const ex=findEx(exId); if(!ex) return;
@@ -864,6 +1069,7 @@ async function openTips(exId){
     ${img?`<img src="${img}" alt="${esc(ex.name)}">`:""}
     <h2>${esc(ex.name)}</h2><div class="zh">${esc(ex.zh||"")}</div>
     ${ex.cues?`<h3>How to do it</h3><p>${esc(ex.cues)}</p>`:""}
+    ${equipOf(ex)&&EQUIP_TEXT[equipOf(ex)]?`<h3>How to log the weight</h3><p>${esc(EQUIP_TEXT[equipOf(ex)][1])}</p>`:""}
     <div class="warn"><h3>Avoid injury</h3><ul>${safetyFor(ex).map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div></div>`;
   sheet.innerHTML=body(cachedImg(ex.photo));
   sheet.addEventListener("click",e=>{ if(e.target===sheet || e.target.closest("[data-close]")) sheet.remove(); });
@@ -1060,6 +1266,7 @@ function renderEditEx(dayId,i){
    ${e.mode==="bodyweight"? `<label class="f" for="e_steps">Extra weight options (kg, separated by commas)</label><input class="t" id="e_steps" value="${esc((e.steps||ADD_STEPS).join(", "))}" data-efield="steps" data-day="${dayId}" data-i="${i}" inputmode="decimal">`:""}
    ${(e.mode==="progress"||e.mode==="steady")? `<label class="f" for="e_steps">Weights your gym has (kg, separated by commas)</label><input class="t" id="e_steps" value="${esc((e.steps||[]).join(", "))}" data-efield="steps" data-day="${dayId}" data-i="${i}" inputmode="decimal">${f("start","Starting weight (kg)","text",'inputmode="decimal"')}`:""}
    <label class="f" for="e_photo">Photo file in gym-log/images</label><input class="t" id="e_photo" value="${esc(e.photo||"")}" data-efield="photo" data-day="${dayId}" data-i="${i}" placeholder="for example lat_pulldown.jpg">
+   ${(e.mode==="progress"||e.mode==="steady"||e.mode==="bodyweight")?`<label class="f" for="e_equip">Equipment (how the weight is logged)</label><select class="t" id="e_equip" data-efield="equip" data-day="${dayId}" data-i="${i}">${Object.entries(EQUIP_TEXT).map(([k,[l]])=>`<option value="${k}" ${equipOf(e)===k?"selected":""}>${l}</option>`).join("")}</select><p class="sub">${esc((EQUIP_TEXT[equipOf(e)]||["",""])[1])}</p>`:""}
    <label class="f" for="e_area">Body area (for the Progress charts)</label><select class="t" id="e_area" data-efield="area" data-day="${dayId}" data-i="${i}">${[["","Automatic"],["upper","Upper body"],["lower","Lower body"],["core","Core"],["cardio","Cardio"],["other","Other"]].map(([v,l])=>`<option value="${v}" ${ (e.area||"")===v?"selected":""}>${l}</option>`).join("")}</select>
    <label class="f" for="e_cues">Form tips</label><textarea class="t" id="e_cues" data-efield="cues" data-day="${dayId}" data-i="${i}">${esc(e.cues||"")}</textarea>
    <label class="f" for="e_safety">Avoid-injury tips (one per line; leave empty for the built-in ones)</label><textarea class="t" id="e_safety" data-efield="safety" data-day="${dayId}" data-i="${i}" placeholder="${esc(safetyFor(e).join("\n"))}">${esc(e.safety||"")}</textarea>
@@ -1090,6 +1297,8 @@ function renderSettings(first){
     <label class="f" for="s_token">GitHub access token</label>
     <input class="t" id="s_token" type="password" autocomplete="off" value="${esc(cfg.token)}" placeholder="github_pat_…">
     <p class="sub">A fine-grained token with Contents: read and write on gym-log only. It stays on this phone.</p>
+    <label class="f" for="s_exp">Token expires on</label><input class="t" id="s_exp" type="date" value="${esc(cfg.tokenExpires||"")}">
+    <p class="sub">GitHub shows this date next to the token. The app reminds you 2 weeks before.</p>
     <div class="row2"><div><label class="f" for="s_owner">GitHub user</label><input class="t" id="s_owner" value="${esc(cfg.owner)}" autocapitalize="off"></div><div><label class="f" for="s_repo">Data repository</label><input class="t" id="s_repo" value="${esc(cfg.repo)}" autocapitalize="off"></div></div>
     <label class="f">Who uses this phone</label>${userSwitch()}
     <p><button class="btn primary" data-act="savecfg" style="width:100%">Connect and sync</button></p>
@@ -1106,7 +1315,7 @@ function renderSettings(first){
   ${!first?`<div class="card"><p class="sub">${store.synced?`Last synced ${new Date(store.synced).toLocaleString()}`:"Not synced yet"} · ${queue().length} waiting to upload</p><div class="links"><button class="btn" data-act="syncnow">Sync now</button><button class="btn danger" data-act="forget">Remove token from this phone</button></div></div>`:""}`;
 }
 async function saveCfg2(){
-  cfg.token=$("#s_token").value.trim(); cfg.owner=$("#s_owner").value.trim()||cfg.owner; cfg.repo=$("#s_repo").value.trim()||cfg.repo; saveCfg();
+  cfg.token=$("#s_token").value.trim(); cfg.owner=$("#s_owner").value.trim()||cfg.owner; cfg.repo=$("#s_repo").value.trim()||cfg.repo; cfg.tokenExpires=($("#s_exp")&&$("#s_exp").value)||cfg.tokenExpires||""; saveCfg();
   const msg=$("#s_msg"); msg.textContent="Connecting…";
   try{
     const f=await ghGet(paths(cfg.user).routines);
@@ -1144,14 +1353,25 @@ document.addEventListener("click", async ev=>{
   }
   const a=t.dataset.act;
   if(a==="addpreset"){ const pr=PRESETS[+t.dataset.i]; return addToToday({id:"x:"+pr.name, name:pr.name, zh:pr.zh, mode:pr.mode, target:pr.target, area:pr.area, cues:""}); }
-  if(a==="addlib"){ const src=findEx($("#a_lib").value); if(src) return addToToday(JSON.parse(JSON.stringify(src))); return; }
+  if(a==="addlibitem"){ const src=findEx(t.dataset.id); if(src) return addToToday(JSON.parse(JSON.stringify(src))); return; }
+  if(a==="addcat"){ addFilter.cat=t.dataset.cat; document.querySelectorAll('[data-act="addcat"]').forEach(b=>b.setAttribute("aria-pressed", b.dataset.cat===addFilter.cat)); $("#a_list").innerHTML=addListHTML(draftDay); return; }
   if(a==="addnew"){
     const name=cleanName($("#a_name").value); if(!name){ toast("Give it a name first."); return; }
     const mode=$("#a_mode").value; const lo=num($("#a_min").value), hi=num($("#a_max").value), sets=Math.max(1,num($("#a_sets").value)||1);
-    const ex={id:"x:"+name, name, zh:($("#a_zh").value||"").trim().slice(0,30), mode, cues:""};
+    const ex={id:"x:"+name, name, zh:($("#a_zh").value||"").trim().slice(0,30), mode, cues:"", equip:$("#a_equip").value};
     if(mode==="cardio"){ ex.target=lo||10; } else { ex.sets=sets; ex.repMin=Math.min(lo,hi)||8; ex.repMax=Math.max(lo,hi)||12; }
     if(mode==="progress"){ ex.steps=[2.5,5,7.5,10,12.5,15,20,25,30,35,40]; ex.start=5; }
     return addToToday(ex);
+  }
+  if(a==="logsave") return saveEditLog(t.dataset.ex, t.dataset.date, false);
+  if(a==="logdelall"){ if(confirm("Delete all of these sets? This can only be undone from GitHub's history.")) return saveEditLog(t.dataset.ex, t.dataset.date, true); return; }
+  if(a==="logdelrow"){ const box=t.closest(".edset"); const gone=!box.classList.contains("gone"); box.classList.toggle("gone",gone); t.setAttribute("aria-pressed",gone); t.textContent=gone?"Undo":"Delete"; return; }
+  if(a==="bodysave") return saveEditBody(t.dataset.date, t.dataset.k, false);
+  if(a==="bodydel"){ if(confirm("Delete this check-in?")) return saveEditBody(t.dataset.date, t.dataset.k, true); return; }
+  if(a==="check"){
+    const arr=draft.ex[t.dataset.ex]; const st=arr&&arr[+t.dataset.i]; if(!st) return; const f=t.dataset.f;
+    if(st[f]!=="" && st[f]!=null){ st[f]=""; } else { st[f]=Math.max(0,num(t.dataset.plan)); }
+    saveDraft(); renderDay(draftDay); return;
   }
   if(a==="feel"){ draft.feel = draft.feel===+t.dataset.v ? 0 : +t.dataset.v; saveDraft(); document.querySelectorAll('[data-act="feel"]').forEach(b=>b.setAttribute("aria-pressed", +b.dataset.v===draft.feel)); return; }
   if(a==="deloadstart"){ const today=localISO(); await savePlanFields({lastDeload:today, deloadUntil:addDays(today,6), deloadSnoozeUntil:""}, "Lighter week started. Workouts are adjusted for the next 7 days."); draft=null; draftDay=null; render(); return; }
@@ -1199,6 +1419,7 @@ document.addEventListener("input", ev=>{
   const el=ev.target;
   if(el.dataset.in){ setVal(el.dataset.in,+el.dataset.i,el.dataset.f,el.value); return; }
   if(el.id==="notes" && draft){ draft.notes=el.value; saveDraft(); return; }
+  if(el.id==="a_q"){ addFilter.q=el.value; const box=$("#a_list"); if(box) box.innerHTML=addListHTML(draftDay); return; }
 });
 window.addEventListener("hashchange", render);
 
