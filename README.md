@@ -22,12 +22,16 @@ App link (after GitHub Pages is on): https://pinghsuanlin.github.io/gymtracker/
 
 - **If a phone is lost:** delete its token on GitHub (step 4's page). The logs stay safe.
 - **No signal at the gym:** workouts are kept on the phone and upload automatically next time it's online.
+- **Stages:** weeks 1–6 Foundation, 7–12 Build, 13–15 Sharpen, then Maintain in alternating 6-week blocks (goal: lean and fit). The home screen shows the week and stage; when a new stage starts, tap **Update my routine** (your old routine is backed up in `gym-log/routines/`). Set the plan's start date in **Settings → Plan**.
+- **Lighter weeks:** suggested only when it's been 5+ weeks *and* there are at least 2 signs of fatigue (stalled lifts, dropping reps, workouts that felt hard, notes about soreness or tiredness; after 8+ weeks one sign is enough). During a lighter week workouts show half the sets at about 80% of the weight.
+- **How did it feel?** tap Easy / OK / Hard / Exhausted before saving a workout; it helps spot fatigue.
 - **Forgot to log a day:** open that workout and change **Workout date** at the top to the day you trained. It's saved under that date, and "Last time" compares with the session before it.
 - **Saving part-way:** saving twice on the same day stays one session. Reopen the workout to see the sets already saved; new sets continue the numbering.
 - **Extra exercises:** in a workout, tap **+ Add warm-up or extra** (top) or **+ Add exercise** (bottom). Pick a quick warm-up, an exercise from another day, or a new one. Tick *Keep it in this routine* to have it there next time.
 - **Weight on bodyweight moves:** each set has a selector: *Bodyweight* or *+2.5 / +5 / … kg*. The options can be changed per exercise in **Edit routines**.
 - **Photo and tips:** tap an exercise's picture for a large photo, how to do it, and avoid-injury tips. Tips can be edited per exercise in **Edit routines**.
-- **Progress:** sessions per week, upper vs lower sets, cardio minutes, weights over time and body weight, with written insights. Tick *Compare with …* to see the other user alongside.
+- **Progress:** plan adherence, week streak, a training calendar, personal records, estimated max strength (1RM) per lift, upper vs lower sets and weight lifted, cardio minutes and a smoothed body-weight trend, with written insights. Tick *Compare with …* to see the other user alongside.
+- **Body check-in:** weight, body fat %, waist, hips and thigh. Add sex, birth year and height under *Your profile* to see BMI (Taiwan's cut-offs), the healthy body-fat range for your age, waist checks and your weekly trend. The profile is saved in `gym-log/profile/`.
 - **Names:** Settings → Names. Both phones show the same names; the log files keep their `user1` / `user2` names, so past workouts are never affected.
 - **Changing exercises:** use **Edit routines** in the app, or edit `routines/user1.json` in `gym-log` directly.
 - **Weights:** each exercise lists the weights your gym actually has (for example `20, 25, 30`). The app only ever suggests those.
