@@ -467,10 +467,14 @@ async function gh(path, opts={}){
   return r;
 }
 async function ghGet(path){
-  const r=await gh(path);
+  const r=await gh(path,{headers:{"Accept":"application/vnd.github.object"}});
   if(r.status===404) return null;
   if(!r.ok) throw new Error(await ghError(r));
   const j=await r.json();
+  if(j.encoding==="none" || (!j.content && j.size>0)){   /* over 1 MB: GitHub only returns the contents as raw text */
+    const rr=await gh(path,{headers:{"Accept":"application/vnd.github.raw"}}); if(!rr.ok) throw new Error(await ghError(rr));
+    return {sha:j.sha, text:await rr.text()};
+  }
   return {sha:j.sha, text:b64DecodeUtf8(j.content)};
 }
 async function ghPut(path, text, sha, message){
@@ -761,7 +765,7 @@ function findEx(exId){
   if(String(exId).startsWith("x:")){
     const rows=store.logs.filter(r=>r.exercise===exId);
     const mode = rows.some(r=>num(r.kg)>0) ? "progress" : rows.some(r=>num(r.seconds)>0 && !num(r.reps)) ? "cardio" : "bodyweight";
-    return {id:exId, name:exId.slice(2), mode, sets:1, repMin:0, repMax:0, target:0};
+    return {id:exId, name:exId.slice(2), mode, sets:1, repMin:0, repMax:0, target:0, ...(mode==="cardio"?{area:"cardio"}:{})};
   }
   return null;
 }
@@ -1080,9 +1084,10 @@ async function openTips(exId){
 
 /* ---- progress & comparison ---- */
 function areaOf(exId, dayId){
+  const pre=PRESETS.find(p=>"x:"+p.name===exId); if(pre) return pre.area;
   const ex=findEx(exId); if(ex && ex.area) return ex.area;
   if(AREA[exId]) return AREA[exId];
-  if(/run|walk|bike|row(ing)? machine|elliptical|warm/i.test(exId)) return "cardio";
+  if(/run|walk|jog|bike|cycl|row(ing)? machine|elliptical|stair|step ?mill|rope|treadmill|swim|warm|stretch|mobility|foam/i.test(exId)) return /stretch|mobility|foam/i.test(exId)?"other":"cardio";
   if(/^upper/.test(dayId||"")) return "upper"; if(/^lower/.test(dayId||"")) return "lower";
   return "other";
 }
@@ -1359,7 +1364,7 @@ document.addEventListener("click", async ev=>{
     const name=cleanName($("#a_name").value); if(!name){ toast("Give it a name first."); return; }
     const mode=$("#a_mode").value; const lo=num($("#a_min").value), hi=num($("#a_max").value), sets=Math.max(1,num($("#a_sets").value)||1);
     const ex={id:"x:"+name, name, zh:($("#a_zh").value||"").trim().slice(0,30), mode, cues:"", equip:$("#a_equip").value};
-    if(mode==="cardio"){ ex.target=lo||10; } else { ex.sets=sets; ex.repMin=Math.min(lo,hi)||8; ex.repMax=Math.max(lo,hi)||12; }
+    if(mode==="cardio"){ ex.target=lo||10; ex.area="cardio"; } else { ex.sets=sets; ex.repMin=Math.min(lo,hi)||8; ex.repMax=Math.max(lo,hi)||12; }
     if(mode==="progress"){ ex.steps=[2.5,5,7.5,10,12.5,15,20,25,30,35,40]; ex.start=5; }
     return addToToday(ex);
   }

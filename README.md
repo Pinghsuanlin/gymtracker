@@ -20,6 +20,8 @@ App link (after GitHub Pages is on): https://pinghsuanlin.github.io/gymtracker/
 
 ## Good to know
 
+- **Large files:** works with log files over 1 MB (GitHub's limit for normal reads), up to 100 MB, so years of logs keep syncing.
+
 - **If a phone is lost:** delete its token on GitHub (step 4's page). The logs stay safe.
 - **No signal at the gym:** workouts are kept on the phone and upload automatically next time it's online.
 - **Stages:** weeks 1–6 Foundation, 7–12 Build, 13–15 Sharpen, then Maintain in alternating 6-week blocks (goal: lean and fit). The home screen shows the week and stage; when a new stage starts, tap **Update my routine** (your old routine is backed up in `gym-log/routines/`). Set the plan's start date in **Settings → Plan**.
