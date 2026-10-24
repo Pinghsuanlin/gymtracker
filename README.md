@@ -20,7 +20,11 @@ App link (after GitHub Pages is on): https://pinghsuanlin.github.io/gymtracker/
 
 ## Good to know
 
-- **Large files:** works with log files over 1 MB (GitHub's limit for normal reads), up to 100 MB, so years of logs keep syncing.
+- **Runs:** log distance, time (minutes or mm:ss) and, optionally, average heart rate; pace and speed are worked out as you type. Each run day shows how to run it for your current stage, and "Done as planned" logs the planned time in one tap. History and Progress show pace (lower is faster) and kilometres per week.
+- **Time or reps:** timed exercises such as mountain climbers or jumping jacks have a Time | Reps switch; your choice is remembered per exercise.
+- **Charts** have grid lines with round values.
+
+- **Fast for years:** new workouts go into one file per year (`logs/<user>/2026.csv`); the original `logs/<user>.csv` stays and is still read. Saving only touches this year's file, and syncing only downloads files that changed, so speed stays the same however much history you keep. The offline copy is kept in the browser's IndexedDB storage, which has plenty of room. Open the app from its Home Screen icon so the phone keeps that copy.
 
 - **If a phone is lost:** delete its token on GitHub (step 4's page). The logs stay safe.
 - **No signal at the gym:** workouts are kept on the phone and upload automatically next time it's online.
