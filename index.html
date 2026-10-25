@@ -105,6 +105,18 @@ textarea.t{min-height:72px}
 .datebar{display:flex;align-items:center;gap:10px;margin:6px 0 2px;font-weight:600;font-size:15px}
 .datebar input{min-height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);padding:4px 8px;font-size:16px}
 .tip.backdate{margin:8px 0 0;background:color-mix(in srgb,var(--warn) 18%,var(--surface))}
+.tipbox{position:absolute;z-index:60;background:var(--ink);color:var(--paper);font-size:14px;font-weight:600;padding:6px 10px;border-radius:8px;max-width:260px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.bal{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+.balrow{display:grid;grid-template-columns:7.5em 1fr 2.6em;gap:10px;align-items:center}
+.ballbl{display:flex;flex-direction:column;line-height:1.2}
+.balbars{position:relative;display:flex;flex-direction:column;gap:4px}
+.baltrack{height:14px;background:var(--sunk);border-radius:7px;overflow:hidden}
+.baltrack i{display:block;height:100%;border-radius:7px;cursor:pointer}
+.planmark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);opacity:.7;transform:translateX(-1px)}
+.balnum{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.balverdict{font-weight:600;margin:12px 0 0}
+details.more summary{font-weight:700;min-height:44px;display:flex;align-items:center;cursor:pointer}
+details.more summary::after{content:"▾";margin-left:auto;padding-left:8px;color:var(--muted)} details.more[open] summary::after{content:"▴"}
 .pace{margin:8px 0 0;font-size:15px}
 .countseg{margin:8px 12px 0}
 .saved{margin:6px 12px 0;font-size:14px;color:var(--good);font-weight:600}
@@ -881,6 +893,19 @@ function renderHistory(exId){
   <div class="card">${pts.length>1?chart(pts,unit):`<p class="empty">${pts.length?"One session so far: the chart appears after the second.":"No sessions logged yet."}</p>`}
   ${sess.length?`<table class="hist">${sess.slice().reverse().map(s=>`<tr><td>${niceDate(s.date)}</td><td>${esc(s.sets.map(row).join(", "))}</td><td class="edcell"><button class="btn small" data-go="editlog/${encodeURIComponent(exId)}/${s.date}">Edit</button></td></tr>`).join("")}</table>`:""}</div>`;
 }
+/* tap a point or bar to see its value */
+function hideTip(){ const t=document.getElementById("tipbox"); if(t) t.remove(); }
+function showTip(el, ev){
+  hideTip(); const tip=document.createElement("div"); tip.id="tipbox"; tip.className="tipbox"; tip.setAttribute("role","status"); tip.textContent=el.getAttribute("data-tip"); document.body.appendChild(tip);
+  const r=el.getBoundingClientRect(); const cx=(ev&&ev.clientX)||r.left+r.width/2, cy=(ev&&ev.clientY)||r.top;
+  const w=tip.offsetWidth, h=tip.offsetHeight; let x=Math.min(Math.max(8,cx-w/2), innerWidth-w-8), y=cy-h-14; if(y<8) y=cy+18;
+  tip.style.left=x+"px"; tip.style.top=(y+scrollY)+"px";
+}
+document.addEventListener("click", ev=>{ const el=ev.target.closest && ev.target.closest("[data-tip]"); if(el){ showTip(el, ev); ev.stopPropagation(); } else hideTip(); }, true);
+window.addEventListener("hashchange", hideTip);
+/* keep small wobbles small: the scale always spans at least 20% of the value */
+function padRange(lo, hi){ const span=Math.max(hi-lo, Math.abs(hi)*0.2||1); if(hi-lo<span){ const mid=(hi+lo)/2; lo=Math.max(0,mid-span/2); hi=lo+span; } return [lo,hi]; }
+/* round, evenly spaced values for grid lines (e.g. 20, 25, 30) */
 function niceTicks(lo, hi, n){
   if(!(hi>lo)) { hi=lo+1; }
   const raw=(hi-lo)/(n||4), mag=Math.pow(10,Math.floor(Math.log10(raw))), f=raw/mag;
@@ -891,7 +916,7 @@ function gridLines(xL, xR, yOf, ticks, fmt){
   return ticks.map(t=>`<line x1="${xL}" y1="${yOf(t).toFixed(1)}" x2="${xR}" y2="${yOf(t).toFixed(1)}" stroke="var(--line)" stroke-width="1" ${t===ticks[0]?"":'stroke-dasharray="3 4"'}/><text x="${xL-6}" y="${(yOf(t)+4).toFixed(1)}" font-size="12" fill="var(--muted)" text-anchor="end">${esc(fmt(t))}</text>`).join("");
 }
 function chart(pts, unit){
-  const W=600,H=220,P=30,L=64; const vs=pts.map(p=>p.v); let lo=Math.min(...vs), hi=Math.max(...vs); if(hi===lo){ hi+=1; lo=Math.max(0,lo-1); }
+  const W=600,H=220,P=30,L=64; const vs=pts.map(p=>p.v); let lo=Math.min(...vs), hi=Math.max(...vs); [lo,hi]=padRange(lo,hi);
   const ticks=niceTicks(lo,hi,4); lo=ticks[0]; hi=ticks[ticks.length-1];
   const x=i=>L+(W-L-P)*(pts.length===1?0.5:i/(pts.length-1)); const y=v=>H-P-(H-2*P)*(v-lo)/(hi-lo);
   const d=pts.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
@@ -901,7 +926,7 @@ function chart(pts, unit){
    <text x="${L}" y="${H-P+22}" font-size="13" fill="var(--muted)">${esc(niceDate(pts[0].d))}</text>
    <text x="${W-P}" y="${H-P+22}" font-size="13" fill="var(--muted)" text-anchor="end">${esc(niceDate(pts[pts.length-1].d))}</text>
    <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round"/>
-   ${pts.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.v)}" r="5" fill="var(--accent)"><title>${esc(niceDate(p.d))}: ${esc(fmt(p.v))}</title></circle>`).join("")}
+   ${pts.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.v)}" r="5.5" fill="var(--accent)"/><circle cx="${x(i)}" cy="${y(p.v)}" r="16" fill="transparent" data-tip="${esc(niceDate(p.d))}: ${esc(fmt(p.v))}" style="cursor:pointer"/>`).join("")}
   </svg>`;
 }
 function ageOf(pr){ return pr && pr.birthYear ? new Date().getFullYear()-num(pr.birthYear) : 0; }
@@ -1188,6 +1213,27 @@ function areaOf(exId, dayId){
   return "other";
 }
 const other = {};   // the other user's data, loaded for comparison
+/* Balance: average sets per week over the last 4 weeks, by area, against your plan */
+function plannedPerWeek(area){ let n=0; for(const d of store.routines?.days||[]) for(const ex of d.exercises){ if(areaOf(ex.id,d.id)===area && ex.mode!=="cardio" && ex.mode!=="intervals") n+=num(ex.sets)||0; } return n; }
+function balanceCard(A, B, w4, inArea, me, them, colA, colB){
+  const avg=(logs,a)=>{ const n=w4.reduce((t,w)=>t+inArea(logs,a).filter(r=>weekStart(r.date)===w).length,0); return Math.round(n/4*10)/10; };
+  const areas=[["upper","Upper body","上半身"],["lower","Lower body","下半身"],["core","Core","核心"]];
+  const va=areas.map(([a])=>avg(A.logs,a)), vb=B?areas.map(([a])=>avg(B.logs,a)):null, plan=areas.map(([a])=>plannedPerWeek(a));
+  const max=Math.max(1,...va,...(vb||[]),...plan);
+  const f=v=>String(v).replace(".",",");
+  const bar=(v,c,who,label)=>`<div class="baltrack"><i style="width:${(v/max*100).toFixed(1)}%;background:${c}" data-tip="${esc(who)} · ${esc(label)}: ${f(v)} sets a week"></i></div>`;
+  const up=va[0], lo=va[1];
+  const verdict = !(up+lo) ? "Log a few workouts to see your balance."
+    : up>=lo ? `Balanced for your goal: upper body gets at least as many sets as lower body (${f(up)} vs ${f(lo)} a week).`
+    : `Lower body is getting more sets than upper (${f(lo)} vs ${f(up)} a week). For a pear shape, aim for upper ≥ lower.`;
+  return `<div class="card"><h2 class="sec">Balance · 上下半身</h2><p class="sub">Average sets per week over the last 4 weeks, with what your plan has.</p>
+   ${B?legend([{name:USERS[me],color:colA},{name:USERS[them],color:colB}]):""}
+   <div class="bal">${areas.map(([a,l,zh],i)=>`<div class="balrow"><div class="ballbl"><b>${l}</b> <span class="zh">${zh}</span><span class="sub small">plan ${plan[i]}</span></div>
+     <div class="balbars">${bar(va[i],colA,USERS[me],l)}${B?bar(vb[i],colB,USERS[them],l):""}<i class="planmark" style="left:${(plan[i]/max*100).toFixed(1)}%"></i></div>
+     <div class="balnum">${f(va[i])}${B?`<br><span class="sub small">${f(vb[i])}</span>`:""}</div></div>`).join("")}</div>
+   <p class="sub small">The thin line on each bar marks your plan. Tap a bar for the number.</p>
+   <p class="balverdict">${esc(verdict)}</p></div>`;
+}
 async function loadUser(u){
   if(u===cfg.user) return {logs:store.logs, body:store.body};
   const key=k=>`gt_${cfg.owner}_${cfg.repo}_${u}_${k}`;
@@ -1261,13 +1307,13 @@ async function renderProgress(){
     <div class="kpi"><b>${prs.length}</b><span>personal records (30 days)</span></div></div></div>
   <div class="card"><h2 class="sec">What the numbers say</h2>${ins.length?`<ul class="insights">${ins.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`:`<p class="empty">Log a few workouts and insights appear here.</p>`}</div>
   <div class="card"><h2 class="sec">Consistency · 規律性</h2><p class="sub">This week: ${thisWk} of ${PLAN_PER_WEEK} planned sessions.</p>${heatmap(sessA)}</div>
-  <div class="card"><h2 class="sec">Sessions per week</h2>${legend(sesPerWeek)}${bars(wl,sesPerWeek)}</div>
   <div class="card"><h2 class="sec">Strength · 肌力</h2>
     ${prs.length?`<h3 style="font-size:15px;margin:4px 0">Recent personal records</h3><ul class="insights">${prs.slice(0,6).map(p=>`<li>${esc(niceDate(p.date))} · <b>${esc(p.ex.name)}</b>: ${esc(p.text)}</li>`).join("")}</ul>`:""}
     <p class="sub">Estimated max (1RM) from your best set each session. It rises when you add reps, even if your gym's weight steps are big.</p>
-    ${lifts.length? (B?legend([{name:USERS[me],color:colA},{name:USERS[them],color:colB}]):"")+lifts.map(l=>{ const last=l.pa[l.pa.length-1]; return `<h3 style="font-size:15px;margin:12px 0 0">${esc(l.ex.name)}${l.ex.zh?` · <span class="zh">${esc(l.ex.zh)}</span>`:""}</h3>${last?`<p class="sub" style="margin:0">Now: ${esc(fmtKg(last.w))} kg working weight · est. max ${esc(fmtKg(last.v))} kg${l.ex.mode==="steady"?" (legs: keep steady)":""}</p>`:""}${lines([...(B?[{name:USERS[them],color:colB,points:l.pb}]:[]),{name:USERS[me],color:colA,points:l.pa}],"kg")}`; }).join("") : `<p class="empty">Charts appear once an exercise has been logged twice.</p>`}</div>
-  <div class="card"><h2 class="sec">Upper vs lower · 上下半身</h2>${legend(stackA)}${stacked(wl,stackA)}<p class="sub">Sets per week. For a pear shape, upper-body sets should be at least equal to lower-body sets.</p>
-    <h3 style="font-size:15px;margin:14px 0 0">Weight lifted per week (kg × reps)</h3>${legend(tonnage)}${bars(wl,tonnage)}</div>
+    ${lifts.length? (()=>{ const one=l=>{ const last=l.pa[l.pa.length-1]; return `<h3 style="font-size:15px;margin:12px 0 0">${esc(l.ex.name)}${l.ex.zh?` · <span class="zh">${esc(l.ex.zh)}</span>`:""}</h3>${last?`<p class="sub" style="margin:0">Now: ${esc(fmtKg(last.w))} kg working weight · est. max ${esc(fmtKg(last.v))} kg${l.ex.mode==="steady"?" (legs: keep steady)":""}</p>`:""}${lines([...(B?[{name:USERS[them],color:colB,points:l.pb}]:[]),{name:USERS[me],color:colA,points:l.pa}],"kg")}`; };
+       const sorted=lifts.slice().sort((a,b)=>b.pa.length-a.pa.length); const top=sorted.slice(0,3), rest=sorted.slice(3);
+       return (B?legend([{name:USERS[me],color:colA},{name:USERS[them],color:colB}]):"")+top.map(one).join("")+(rest.length?`<details class="more"><summary>Show all lifts (${lifts.length})</summary>${rest.map(one).join("")}</details>`:"")+`<p class="sub small">Tap a dot to see its value.</p>`; })() : `<p class="empty">Charts appear once an exercise has been logged twice.</p>`}</div>
+  ${balanceCard(A, B, w4, inArea, me, them, colA, colB)}
   ${(()=>{ const runs=setsRows(A.logs).filter(r=>{ const e=findEx(r.exercise); return e?isRun(e):/run/.test(r.exercise); });
      if(!runs.length) return "";
      const km=[{name:USERS[me],color:colA,values:perWeek(weeks,runs,r=>num(r.distance_km))}];
@@ -1319,7 +1365,7 @@ function bars(labels, series, unit){
   const W=600,H=200,P=26,L=44,n=labels.length,k=series.length; const ticks=niceTicks(0,Math.max(1,...series.flatMap(x=>x.values)),4); const max=ticks[ticks.length-1];
   const gw=(W-L-P)/n, bw=Math.max(3,(gw-6)/k); const y=v=>H-P-(H-2*P)*v/max;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bar chart">${gridLines(L, W-P, y, ticks, v=>fmtKg(v)+(unit?" "+unit:""))}
-   ${series.map((sr,j)=>sr.values.map((v,i)=>v?`<rect x="${(L+i*gw+3+j*bw).toFixed(1)}" y="${y(v).toFixed(1)}" width="${(bw-1).toFixed(1)}" height="${(H-P-y(v)).toFixed(1)}" rx="2" fill="${sr.color}"><title>${esc(sr.name)} ${labels[i]}: ${v}</title></rect>`:"").join("")).join("")}
+   ${series.map((sr,j)=>sr.values.map((v,i)=>v?`<rect x="${(L+i*gw+3+j*bw).toFixed(1)}" y="${y(v).toFixed(1)}" width="${(bw-1).toFixed(1)}" height="${(H-P-y(v)).toFixed(1)}" rx="2" fill="${sr.color}" data-tip="${esc(sr.name)} · week of ${esc(labels[i])}: ${esc(fmtKg(v))}${unit?" "+esc(unit):""}" style="cursor:pointer"/>`:"").join("")).join("")}
    <text x="${L}" y="${H-P+18}" font-size="13" fill="var(--muted)">${esc(labels[0])}</text><text x="${W-P}" y="${H-P+18}" font-size="13" fill="var(--muted)" text-anchor="end">${esc(labels[n-1])}</text></svg>`;
 }
 function stacked(labels, stacks){
@@ -1333,13 +1379,13 @@ function lines(series, unit){
   const pts=series.flatMap(s=>s.points); if(!pts.length) return "";
   const W=600,H=190,P=30,L=66; const t=d=>new Date(d+"T12:00:00").getTime();
   let t0=Math.min(...pts.map(p=>t(p.d))), t1=Math.max(...pts.map(p=>t(p.d))); if(t1===t0){ t0-=864e5; t1+=864e5; }
-  let lo=Math.min(...pts.map(p=>p.v)), hi=Math.max(...pts.map(p=>p.v)); if(hi===lo){ hi+=1; lo=Math.max(0,lo-1); }
+  let lo=Math.min(...pts.map(p=>p.v)), hi=Math.max(...pts.map(p=>p.v)); [lo,hi]=padRange(lo,hi);
   const ticks=niceTicks(lo,hi,4); lo=ticks[0]; hi=ticks[ticks.length-1];
   const x=d=>L+(W-L-P)*(t(d)-t0)/(t1-t0), y=v=>H-P-(H-2*P)*(v-lo)/(hi-lo);
   const fmt = unit==="pace" ? (v=>`${Math.floor(v)}:${String(Math.round((v%1)*60)).padStart(2,"0")}`) : (v=>`${fmtKg(v)} ${unit}`);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Line chart in ${unit}">${gridLines(L, W-P, y, ticks, fmt)}
    <text x="${L}" y="${H-P+18}" font-size="13" fill="var(--muted)">${esc(niceDate(new Date(t0).toISOString().slice(0,10)))}</text><text x="${W-P}" y="${H-P+18}" font-size="13" fill="var(--muted)" text-anchor="end">${esc(niceDate(new Date(t1).toISOString().slice(0,10)))}</text>
-   ${series.filter(s=>s.points.length).map(s=>`<path d="${s.points.map((p,i)=>`${i?"L":"M"}${x(p.d).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linejoin="round"/>${s.points.map(p=>`<circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="4.5" fill="${s.color}"><title>${esc(s.name)} ${niceDate(p.d)}: ${esc(fmt(p.v))}</title></circle>`).join("")}`).join("")}</svg>`;
+   ${series.filter(s=>s.points.length).map(s=>`<path d="${s.points.map((p,i)=>`${i?"L":"M"}${x(p.d).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linejoin="round"/>${s.points.map(p=>`<circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="5" fill="${s.color}"/><circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="16" fill="transparent" data-tip="${esc(s.name)} · ${esc(niceDate(p.d))}: ${esc(fmt(p.v))}" style="cursor:pointer"/>`).join("")}`).join("")}</svg>`;
 }
 let edit=null;
 function renderEdit(arg){
