@@ -163,6 +163,24 @@ h2.sec{font-size:17px;margin:4px 0 6px}
 .sub.small{font-size:12px}
 .status.bad{color:var(--warn)}
 @media (prefers-reduced-motion: no-preference){ .toast{animation:pop .18s ease-out} @keyframes pop{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}} }
+.logline{margin:4px 12px 0;font-size:14px;color:var(--muted)}
+.logline b{color:var(--ink)}
+.barrow{display:flex;align-items:center;gap:8px;margin:6px 12px 0;font-size:14px;color:var(--muted)}
+.barrow select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:36px}
+.usual{margin:8px 12px 0;padding:10px 12px;border-radius:10px;font-size:14px;background:var(--sunk);border-left:4px solid var(--accent)}
+.usual .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+details.cues p{margin:4px 0}
+details.cues ul{margin:4px 0 0;padding-left:20px}
+.gal .main{cursor:zoom-in}
+.thumbs{display:flex;gap:6px;margin-top:6px;overflow-x:auto}
+.thumbs button{flex:none;width:60px;height:60px;padding:0;border:2px solid transparent;border-radius:8px;background:var(--sunk);overflow:hidden;color:var(--muted)}
+.thumbs button[aria-pressed="true"]{border-color:var(--accent)}
+.sheetcard .thumbs img{width:100%;height:100%;max-height:none;object-fit:cover;border-radius:0}
+.zoomov{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.94);display:grid;place-items:center;cursor:zoom-out}
+.zoomov img{max-width:100vw;max-height:100vh;object-fit:contain;background:#fff;border-radius:0}
+[data-swapwhen][aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+.sheetcard .chips{margin:8px 0}
+.libitem .btn{white-space:nowrap;flex:none}
 </style>
 </head>
 <body>
@@ -227,17 +245,21 @@ function sessionsFor(rows, exId){
   return Object.keys(by).sort().reverse().map(d=>({date:d,sets:by[d].sort((a,b)=>a.set-b.set)}));
 }
 function nextStep(w, steps){ const s=(steps||[]).slice().sort((a,b)=>a-b); for(const x of s) if(x>w+1e-9) return x; return null; }
-/* The weight to build on: the heaviest weight used for a full set count, else the weight used most often (lighter on a tie). */
-function workingWeight(sets, need){
+function prevStep(w, steps){ const s=(steps||[]).slice().sort((a,b)=>b-a); for(const x of s) if(x<w-1e-9) return x; return null; }
+/* The weight to build on: the heaviest weight used for a full set count, else the weight used most often (lighter on a tie).
+   lowerBetter is for assisted machines, where less help is progress: the lightest help for a full set count, else the most used (more help on a tie). */
+function workingWeight(sets, need, lowerBetter){
   const count={}; for(const s of sets){ if(s.kg>0) count[s.kg]=(count[s.kg]||0)+1; }
   const ws=Object.keys(count).map(Number); if(!ws.length) return 0;
-  const full=ws.filter(w=>count[w]>=(need||Infinity)); if(full.length) return Math.max(...full);
-  return ws.sort((x,y)=> count[y]-count[x] || x-y)[0];
+  const full=ws.filter(w=>count[w]>=(need||Infinity)); if(full.length) return lowerBetter ? Math.min(...full) : Math.max(...full);
+  return ws.sort((x,y)=> count[y]-count[x] || (lowerBetter ? y-x : x-y))[0];
 }
+/* Total weights for a bar: the bar plus the same plates on each side. */
+function barSteps(bar){ return [0,1.25,2.5,5,7.5,10,15,20,25].map(p=>Math.round((bar+2*p)*100)/100); }
 
 /* What to do today for one exercise, given the last session (or none). */
 function advise(ex, last){
-  const m=ex.mode;
+  const m=ex.mode, assisted=ex.equip==="assisted";
   if(m==="cardio") return {kind:"info", text:`Target ${ex.target} min`, kg:0};
   if(m==="intervals") return {kind:"info", text:`Target ${ex.target} rounds`, kg:0};
   if(m==="time") return {kind:"info", text:`${ex.sets} × ${ex.repMin}–${ex.repMax} s`, kg:0};
@@ -246,17 +268,53 @@ function advise(ex, last){
     return {kind:"info", text: w>0 ? `${ex.sets} × ${ex.repMin}–${ex.repMax} reps with +${fmtKg(w)} kg (last time)` : `${ex.sets} × ${ex.repMin}–${ex.repMax} reps, bodyweight. You can add weight per set.`, kg:w};
   }
   const start = ex.start ?? (ex.steps||[0])[0];
-  if(!last || !last.sets.length) return {kind:"start", text:`Start at ${fmtKg(start)} kg, ${ex.repMin}–${ex.repMax} reps`, kg:start};
-  const w = workingWeight(last.sets, ex.sets) || start;
+  if(!last || !last.sets.length){
+    const n=ex.repMin||8;
+    const what = assisted ? `the help that lets you do ${n} reps with 3–4 reps left` : `a weight you can lift ${n} times with 3–4 reps left`;
+    return {kind:"start", text:`First time on this version: pick ${what}${start>0?` (suggested start: ${fmtKg(start)} kg)`:""}.`, kg:start};
+  }
+  const w = workingWeight(last.sets, ex.sets, assisted) || start;
   if(m==="steady") return {kind:"steady", text:`Keep ${fmtKg(w)} kg. Stop each set with 3–4 reps left in you.`, kg:w};
   const atW = last.sets.filter(s=>Math.abs(s.kg-w)<1e-9);
   const allTop = atW.length>=ex.sets && atW.slice(0,ex.sets).every(s=>s.reps>=ex.repMax);
+  if(assisted){
+    if(allTop){
+      const nx = prevStep(w, ex.steps);
+      if(nx!=null) return {kind:"up", text:`Every set hit ${ex.repMax}. Use less help: go down to ${fmtKg(nx)} kg and aim for ${ex.repMin}+ reps.`, kg:nx};
+      return {kind:"up", text:`Every set hit ${ex.repMax} with the least help this machine allows. Time to try the unassisted version.`, kg:w};
+    }
+    return {kind:"stay", text:`Stay at ${fmtKg(w)} kg of help and add a rep where you can (goal: ${ex.sets} × ${ex.repMax}). Less help is progress.`, kg:w};
+  }
   if(allTop){
     const nx = nextStep(w, ex.steps);
     if(nx!=null) return {kind:"up", text:`Every set hit ${ex.repMax}. Go up to ${fmtKg(nx)} kg and aim for ${ex.repMin}+ reps.`, kg:nx};
     return {kind:"up", text:`Every set hit ${ex.repMax} at the heaviest weight. Add a set or slow the reps down.`, kg:w};
   }
   return {kind:"stay", text:`Stay at ${fmtKg(w)} kg and add a rep where you can (goal: ${ex.sets} × ${ex.repMax}).`, kg:w};
+}
+/* One line that says what the number means, shown next to the weight. */
+function loggingLine(ex, kg, bar){
+  const e=equipOf(ex); kg=num(kg);
+  if(e==="dumbbell") return kg>0 ? `${fmtKg(kg)} each = ${fmtKg(kg*2)} total` : "Pick the weight of one dumbbell";
+  if(e==="plate") return kg>0 ? `${fmtKg(kg)} each side = ${fmtKg(kg*2)} total` : "Pick the plates on one side";
+  if(e==="barbell"||e==="smith"){
+    if(!(kg>0)) return "";
+    if(bar!=null && kg>=bar-1e-9){ const p=(kg-bar)/2; return p>0 ? `${fmtKg(kg)} total = bar ${fmtKg(bar)} + ${fmtKg(p)} each side` : `${fmtKg(kg)} total = the bar only`; }
+    return `${fmtKg(kg)} total`;
+  }
+  if(e==="machine") return kg>0 ? `Pin on ${fmtKg(kg)}` : "";
+  if(e==="assisted") return kg>0 ? `${fmtKg(kg)} kg of help (less help = stronger)` : "";
+  if(e==="dumbbell1"||e==="kettlebell") return kg>0 ? `${fmtKg(kg)} kg` : "";
+  if(ex && ex.mode==="bodyweight") return kg>0 ? `Bodyweight + ${fmtKg(kg)} kg added` : "";
+  return "";
+}
+/* If your last n sessions of a movement were all on one version that isn't your usual, return that version's id. */
+function usualCandidate(rows, ids, currentId, n){
+  n=n||3; const byDate={};
+  for(const r of rows){ if(!r.date || !ids.includes(r.exercise) || !(num(r.reps)>0 || num(r.seconds)>0)) continue; const d=(byDate[r.date]=byDate[r.date]||new Set()); d.add(r.exercise); }
+  const dates=Object.keys(byDate).sort().reverse().slice(0,n); if(dates.length<n) return null;
+  const all=new Set(); for(const d of dates){ if(byDate[d].size!==1) return null; all.add([...byDate[d]][0]); }
+  if(all.size!==1) return null; const id=[...all][0]; return id===currentId ? null : id;
 }
 function plateClass(kg){ const map={25:"p25",20:"p20",15:"p15",10:"p10",5:"p5"}; return map[kg] || "pother"; }
 function weekStart(iso){ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()-((d.getDay()+6)%7)); return localISO(d); }
@@ -289,7 +347,6 @@ const STAGES=[
  {key:"build",      name:"Stage 2 · Build",      zh:"增強期", from:7,  to:12},
  {key:"sharpen",    name:"Stage 3 · Sharpen",    zh:"精修期", from:13, to:15},
  {key:"maintain",   name:"Maintain · Lean & fit",zh:"維持期", from:16, to:1e9}];
-const MAIN_UPPER=["lat_pulldown","chest_press","cable_row","incline_press","shoulder_press"];
 const STAGE_SETTINGS={
  foundation:{main:{sets:3,repMin:8,repMax:12}, lateral:3, cardio:{easy_run:30,interval_run:6,bike_intervals:12}},
  build:     {main:{sets:4,repMin:6,repMax:10}, lateral:4, cardio:{easy_run:40,interval_run:8,bike_intervals:15}},
@@ -304,12 +361,14 @@ function stageFor(week){
   const block=Math.floor((week-16)/6), alt=block%2===0?"maintainA":"maintainB";
   return {...st, id:`maintain-${block+1}`, block:block+1, name:`Maintain · Lean & fit (block ${block+1})`, settings:STAGE_SETTINGS[alt]};
 }
-/* Apply a stage's sets/reps/targets to a routine. Only known exercises change; anything you added stays as you set it. */
+const MAIN_MOVES=["lat_pull","chest_press","row","incline_press","shoulder_press"];
+/* Apply a stage's sets/reps/targets to a routine. It follows the movement, so a swapped-in machine gets the same sets as the one it replaced. Anything else you added stays as you set it. */
 function applyStage(routine, settings){
   const r=JSON.parse(JSON.stringify(routine));
   for(const d of r.days||[]) for(const ex of d.exercises||[]){
-    if(MAIN_UPPER.includes(ex.id)) Object.assign(ex, settings.main);
-    else if(ex.id==="lateral_raise") ex.sets=settings.lateral;
+    const mv=movementOf(ex), weighted=(ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight");
+    if(mv && MAIN_MOVES.includes(mv) && weighted) Object.assign(ex, settings.main);
+    else if(mv==="lateral_raise" && weighted) ex.sets=settings.lateral;
     else if(settings.cardio[ex.id]!=null) ex.target=settings.cardio[ex.id];
   }
   return r;
@@ -416,15 +475,105 @@ const LIBRARY=[
  L("band_pass_through","Band shoulder pass-through","彈力帶肩繞環","other","bodyweight",{sets:2,repMin:10,repMax:12,equip:"band",cues:"Arms straight, wide grip, bring the band over the head and behind.",safety:"Widen the grip if it pinches; never force it."}),
  L("foam_rolling","Foam rolling","滾筒放鬆","other","cardio",{target:5,cues:"Roll slowly over tight areas; pause on tender spots.",safety:"Avoid rolling directly on joints or the lower back."})
 ];
+/* ---- movements and versions ----
+   A movement is the muscle pattern (chest press). A version is one piece of equipment for it (stack machine, plate-loaded, barbell, dumbbells).
+   Each version keeps its own history, because the numbers aren't comparable. Stage sets, tips and swaps follow the movement. */
+const MOVES={
+ chest_press:{name:"Chest press",zh:"胸推",area:"upper"}, incline_press:{name:"Incline press",zh:"上斜推",area:"upper"}, chest_fly:{name:"Chest fly",zh:"夾胸",area:"upper"},
+ lat_pull:{name:"Lat pull-down",zh:"背闊肌下拉",area:"upper"}, row:{name:"Row",zh:"划船",area:"upper"}, shoulder_press:{name:"Shoulder press",zh:"肩推",area:"upper"},
+ lateral_raise:{name:"Lateral raise",zh:"側平舉",area:"upper"}, rear_delt:{name:"Rear delt and face pull",zh:"後三角與臉拉",area:"upper"}, curl:{name:"Biceps curl",zh:"二頭彎舉",area:"upper"}, triceps:{name:"Triceps",zh:"三頭",area:"upper"},
+ leg_curl:{name:"Leg curl and hamstrings",zh:"腿後側",area:"lower"}, hip_thrust:{name:"Hip thrust and bridge",zh:"臀推與臀橋",area:"lower"}, hip_hinge:{name:"Hip hinge",zh:"髖鉸鏈",area:"lower"},
+ back_extension:{name:"Back extension",zh:"背伸展",area:"lower"}, lunge:{name:"Squat, lunge and leg press",zh:"蹲、弓箭步與腿推",area:"lower"},
+ hip_abduction:{name:"Hip abduction",zh:"髖外展",area:"lower"}, hip_adduction:{name:"Hip adduction",zh:"髖內收",area:"lower"}, glute_kickback:{name:"Glute kickback",zh:"臀部後踢",area:"lower"}};
+/* which movement each built-in exercise and each id in the standard routine belongs to */
+const MOVE_OF={
+ db_bench_press:"chest_press",push_up:"chest_press",incline_db_press:"incline_press",db_row:"row",chest_supported_row:"row",db_shoulder_press:"shoulder_press",cable_lateral_raise:"lateral_raise",
+ rear_delt_fly:"rear_delt",band_pull_apart:"rear_delt",db_curl:"curl",hammer_curl:"curl",overhead_triceps:"triceps",bench_dip:"triceps",cable_fly:"chest_fly",
+ glute_bridge:"hip_thrust",single_leg_bridge:"hip_thrust",cable_pull_through:"hip_hinge",kettlebell_swing:"hip_hinge",clamshell:"hip_abduction",lateral_band_walk:"hip_abduction",donkey_kick:"glute_kickback",cable_kickback:"glute_kickback",
+ chest_press:"chest_press",lat_pulldown:"lat_pull",cable_row:"row",incline_press:"incline_press",shoulder_press:"shoulder_press",pec_fly:"chest_fly",face_pull:"rear_delt",lateral_raise:"lateral_raise",
+ leg_curl:"leg_curl",hip_thrust:"hip_thrust",back_extension:"back_extension",reverse_lunge:"lunge",goblet_squat:"lunge",abductor:"hip_abduction",adductor:"hip_adduction",bar_curl:"curl",bar_triceps:"triceps"};
+function movementOf(ex){ return (ex && (ex.movement || MOVE_OF[ex.id])) || ""; }
+/* extra photo names to look for, when a photo was added under a different file name */
+const PHOTO_ALIAS={lateral_raise:"db_lateral_raise", incline_press:"machine_incline_press"};
+
+const DB_STEPS=[2.5,5,7.5,10,12.5,15,17.5,20,22.5,25,30];
+const STACK_STEPS=[5,10,15,20,25,30,35,40,45,50,55,60];
+const LIGHT_STACK=[2.5,5,7.5,10,12.5,15,20,25,30,35,40];
+const PLATE_STEPS=[5,10,15,20,25,30,40,50];
+const ASSIST_STEPS=[5,10,15,20,25,30,35,40,45,50,55,60];
+const KB_STEPS=[4,6,8,10,12,16,20,24];
+/* default weight choices for a machine you type in yourself */
+const DEFAULT_STEPS={machine:STACK_STEPS,plate:PLATE_STEPS,dumbbell:DB_STEPS,dumbbell1:DB_STEPS,kettlebell:KB_STEPS,assisted:ASSIST_STEPS};
+const V=(id,name,zh,mv,area,equip,o)=>L(id,name,zh,area,(o&&o.mode)||"progress",Object.assign({movement:mv,equip,sets:3,repMin:8,repMax:12},o));
+LIBRARY.push(
+ // the standard routine's own exercises, so you can always swap back to them
+ V("chest_press","Chest press machine","胸推機","chest_press","upper","machine",{steps:STACK_STEPS,start:15}),
+ V("lat_pulldown","Lat pulldown","滑輪下拉","lat_pull","upper","machine",{steps:STACK_STEPS,start:25}),
+ V("cable_row","Seated cable row","坐姿滑輪划船","row","upper","machine",{steps:STACK_STEPS,start:25}),
+ V("incline_press","Incline chest press machine","上斜胸推機","incline_press","upper","machine",{steps:STACK_STEPS,start:10}),
+ V("shoulder_press","Shoulder press machine","肩推機","shoulder_press","upper","machine",{steps:LIGHT_STACK,start:10}),
+ V("pec_fly","Pec fly machine","蝴蝶機夾胸","chest_fly","upper","machine",{steps:STACK_STEPS,start:15,repMin:10,repMax:15}),
+ V("face_pull","Face pull","臉拉","rear_delt","upper","machine",{steps:LIGHT_STACK,start:10,repMin:12,repMax:15}),
+ V("lateral_raise","Lateral raise (dumbbells)","啞鈴側平舉","lateral_raise","upper","dumbbell",{steps:[2.5,5,7.5,10,12.5,15],start:5,repMin:12,repMax:15,cues:"Stand tall, slight bend in the elbows. Lift the dumbbells out to the sides to shoulder height, then lower slowly."}),
+ V("leg_curl","Leg curl machine","腿彎舉機","leg_curl","lower","machine",{steps:STACK_STEPS,start:15,repMin:10,repMax:12}),
+ V("hip_thrust","Hip thrust","臀推","hip_thrust","lower","machine",{steps:STACK_STEPS,start:20}),
+ V("back_extension","Back extension","背伸展","back_extension","lower","bodyweight",{mode:"bodyweight",repMin:10,repMax:12}),
+ V("abductor","Hip abduction machine","髖外展機","hip_abduction","lower","machine",{steps:STACK_STEPS,start:15,repMin:12,repMax:15}),
+ V("adductor","Hip adduction machine","髖內收機","hip_adduction","lower","machine",{steps:STACK_STEPS,start:15,repMin:12,repMax:15}),
+ V("reverse_lunge","Reverse lunge","後跨弓箭步","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Step back, lower the back knee toward the floor, push through the front heel to stand. Reps per leg."}),
+ V("goblet_squat","Goblet squat","高腳杯深蹲","lunge","lower","dumbbell1",{steps:DB_STEPS,start:8,cues:"Hold one dumbbell at the chest with both hands. Sit down between the knees, chest up, then stand."}),
+ // chest
+ V("plate_loaded_chest_press","Plate-loaded chest press","平板負重胸推機","chest_press","upper","plate",{steps:PLATE_STEPS,start:10,cues:"Seat so the handles line up with the mid-chest. Count only the plates on one side. Push straight out, don't lock the elbows.",safety:"Keep the wrists straight and stacked over the elbows.\nDon't flare the elbows out to 90°; keep them about 45° from the body.\nLoad both sides with the same plates, and use the safety stops."}),
+ V("barbell_bench_press","Barbell bench press","槓鈴臥推","chest_press","upper","barbell",{bar:20,cues:"Eyes under the bar, feet flat, shoulder blades squeezed together. Lower to the mid-chest and press up in a slight arc.",safety:"Use the rack safety arms, or ask for a spotter on heavy sets.\nNever use a thumbless grip.\nKeep the elbows about 45° from the body, and don't bounce the bar off the chest."}),
+ V("smith_bench_press","Smith machine bench press","史密斯臥推","chest_press","upper","smith",{bar:15,cues:"Place the bench so the bar lowers to the mid-chest. Twist the bar to unlock it, lower with control, press up.",safety:"Set the safety stops just below chest level.\nKeep the wrists straight; the fixed path can strain them if the bench is misplaced.\nAsk if you're unsure what the bar weighs: it's different on every machine."}),
+ V("barbell_incline_press","Barbell incline press","槓鈴上斜臥推","incline_press","upper","barbell",{bar:20,cues:"Bench at about 30°. Lower the bar to the upper chest and press up.",safety:"Use the rack safety arms, or ask for a spotter on heavy sets.\nKeep the elbows about 45° from the body.\nDon't arch the lower back off the bench."}),
+ V("smith_incline_press","Smith machine incline press","史密斯上斜臥推","incline_press","upper","smith",{bar:15,cues:"Bench at about 30°, under the bar so it lowers to the upper chest. Twist to unlock, lower, press.",safety:"Set the safety stops just below chest level.\nKeep the elbows about 45° from the body.\nCheck what the bar weighs on this machine."}),
+ V("db_chest_fly","Dumbbell chest fly","啞鈴飛鳥","chest_fly","upper","dumbbell",{steps:[2.5,5,7.5,10,12.5,15,17.5,20],start:5,repMin:10,repMax:15,cues:"Lie on a flat bench, soft bend in the elbows. Open the arms wide until you feel a stretch across the chest, then bring the dumbbells together over the chest.",safety:"Keep it light; the shoulder is stretched under load.\nKeep a soft bend in the elbows the whole time.\nDon't lower the arms below the level of the bench."}),
+ V("band_chest_fly","Band chest fly","彈力帶夾胸","chest_fly","upper","band",{mode:"bodyweight",repMin:10,repMax:15,cues:"Anchor the band behind you at chest height. Arms wide, soft elbows, bring the hands together in front of the chest.",safety:"Check the band for nicks before use.\nDon't let the hands travel behind the body line."}),
+ // back
+ V("assisted_pullup","Assisted pull-up machine","輔助引體向上機","lat_pull","upper","assisted",{steps:ASSIST_STEPS,start:35,repMin:6,repMax:10,cues:"Kneel or stand on the pad, grip the bars slightly wider than the shoulders. Pull the chest toward the bar, then lower slowly. The weight is the help, so less is stronger.",safety:"Don't swing or kick to start the rep.\nLower slowly; don't let the stack pull you up.\nGo down in help only when every set reaches the top of the range."}),
+ V("neutral_grip_pulldown","Neutral-grip lat pulldown","對握下拉","lat_pull","upper","machine",{steps:STACK_STEPS,start:25,cues:"Palms facing each other. Pull the elbows down and back toward the ribs, chest up.",safety:"Don't lean back more than a little.\nLet the bar up slowly; don't let the stack yank your shoulders."}),
+ V("single_arm_pulldown","Single-arm cable pulldown","單手滑輪下拉","lat_pull","upper","machine",{steps:LIGHT_STACK,start:10,cues:"Sit tall, pull one handle down toward the shoulder with the elbow leading. Reps per arm.",safety:"Don't twist the torso to pull.\nLet the arm go up slowly under control."}),
+ V("machine_row","Seated row machine","坐姿划船機","row","upper","machine",{steps:STACK_STEPS,start:25,cues:"Chest on the pad if there is one. Pull the handles to the ribs and squeeze the shoulder blades, then return slowly.",safety:"Don't round the back or lean far forward to reach.\nDon't jerk the weight; no leaning back to finish."}),
+ V("tbar_row","T-bar row","T 槓划船","row","upper","barbell",{bar:20,cues:"Hinge at the hips with a flat back, chest up. Pull the handle toward the lower chest and lower slowly.",safety:"Keep the back flat the whole time; lighter is better than a rounded back.\nDon't jerk the weight up with the hips.\nCheck what the bar weighs on this setup."}),
+ // shoulders
+ V("smith_shoulder_press","Smith machine shoulder press","史密斯肩推","shoulder_press","upper","smith",{bar:15,cues:"Bench upright, bar lowers to about chin level. Press up without arching.",safety:"Set the safety stops at about chin height.\nDon't arch the lower back.\nDon't lock the elbows hard."}),
+ V("barbell_overhead_press","Barbell overhead press","槓鈴肩推","shoulder_press","upper","barbell",{bar:20,cues:"Stand with the bar at the collarbone, ribs down. Press straight up, moving the head back then forward.",safety:"Squeeze the glutes and don't lean back to press.\nStart with just the bar.\nStop if the shoulder pinches at the top."}),
+ V("machine_lateral_raise","Lateral raise machine","側平舉機","lateral_raise","upper","machine",{steps:LIGHT_STACK,start:10,repMin:12,repMax:15,cues:"Seat so the pads sit just above the elbows. Raise the arms out to shoulder height and lower slowly.",safety:"Stop at shoulder height; higher pinches the shoulder.\nDon't shrug; go lighter if you have to."}),
+ V("reverse_pec_deck","Reverse pec deck","反向飛鳥機","rear_delt","upper","machine",{steps:LIGHT_STACK,start:10,repMin:12,repMax:15,cues:"Chest on the pad, arms out in front. Open the arms back in a wide arc, thumbs leading, then return slowly.",safety:"Keep it light; this is for shoulder health, not strength.\nDon't shrug or swing."}),
+ // arms
+ V("ez_bar_curl","EZ-bar curl","EZ 槓彎舉","curl","upper","barbell",{bar:10,repMin:10,repMax:12,cues:"Hold the angled grips, elbows pinned at the sides. Curl up, then lower slowly.",safety:"No swinging; if you need to swing, it's too heavy.\nKeep the wrists straight, not bent back."}),
+ V("machine_curl","Biceps curl machine","二頭彎舉機","curl","upper","machine",{steps:LIGHT_STACK,start:10,repMin:10,repMax:12,cues:"Adjust the seat so the elbows line up with the machine's pivot. Curl up, lower slowly.",safety:"Don't lift the elbows off the pad.\nLower slowly; that's half the work."}),
+ V("rope_pushdown","Rope triceps pushdown","繩索下壓","triceps","upper","machine",{steps:STACK_STEPS,start:15,repMin:10,repMax:12,cues:"Elbows pinned to the sides. Push the rope down and spread the ends apart at the bottom, then return slowly.",safety:"Elbows stay pinned; don't lean over the rope.\nStraighten fully but don't slam the elbows."}),
+ V("db_overhead_triceps","Dumbbell overhead triceps extension","啞鈴頸後臂屈伸","triceps","upper","dumbbell1",{steps:[5,7.5,10,12.5,15,17.5,20,25],start:7.5,repMin:10,repMax:12,cues:"Hold one dumbbell with both hands overhead. Lower it behind the head by bending only the elbows, then press up.",safety:"Keep the ribs down; don't arch the lower back.\nUse a weight you can control behind the head.\nKeep the elbows pointing forward, not flared."}),
+ // legs and glutes
+ V("seated_leg_curl","Seated leg curl machine","坐姿腿彎舉機","leg_curl","lower","machine",{steps:STACK_STEPS,start:15,repMin:10,repMax:12,cues:"Line the knees up with the machine's pivot, pad just above the heels. Curl the heels toward you, then return slowly.",safety:"Line the knee up with the pivot point.\nDon't lift the hips off the seat."}),
+ V("lying_leg_curl","Lying leg curl machine","俯臥腿彎舉機","leg_curl","lower","machine",{steps:STACK_STEPS,start:15,repMin:10,repMax:12,cues:"Lie face down, knees just past the edge of the pad. Curl the heels toward the glutes, then lower slowly.",safety:"Keep the hips down; lifting them means it's too heavy.\nPad just above the heels, not on the calves."}),
+ V("db_rdl","Dumbbell Romanian deadlift","啞鈴羅馬尼亞硬舉","leg_curl","lower","dumbbell",{steps:[5,7.5,10,12.5,15,17.5,20,22.5,25,30],start:7.5,repMin:10,repMax:12,cues:"Soft knees, push the hips back with a flat back, dumbbells sliding down the thighs. Stand up by driving the hips forward.",safety:"Keep the back flat; stop lowering when the back wants to round.\nKeep the dumbbells close to the legs.\nDon't lean back at the top."}),
+ V("barbell_hip_thrust","Barbell hip thrust","槓鈴臀推","hip_thrust","lower","barbell",{bar:20,cues:"Upper back on a bench, bar on the hip crease with a pad. Drive the hips up until the body is straight, then lower.",safety:"Use a pad on the hips and roll the bar into place sitting down.\nAt the top, ribs down; don't arch the lower back.\nChin tucked, looking forward."}),
+ V("machine_hip_thrust","Hip thrust machine","臀推機","hip_thrust","lower","plate",{steps:PLATE_STEPS,start:10,cues:"Sit with the upper back against the pad, belt over the hips. Drive the hips up until the body is straight. Count only the plates on one side; if your machine uses a stack, change the equipment to Stack machine.",safety:"Put the belt on the hip crease, not the belly.\nAt the top, ribs down: don't arch the lower back to lift higher."}),
+ V("reverse_hyper","Reverse hyperextension","反向超人式機","back_extension","lower","machine",{steps:STACK_STEPS,start:10,repMin:10,repMax:12,cues:"Lie face down with the hips at the edge of the pad. Lift the legs until they line up with the body, then lower slowly.",safety:"Don't swing the legs up; go slowly.\nRise only until the body is straight; never arch past it."}),
+ V("split_squat","Split squat","保加利亞／分腿蹲","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Back foot on a bench or the floor, front foot far enough forward. Lower straight down, then push through the front heel. Reps per leg.",safety:"Front knee tracks over the toes; don't let it cave in.\nHold onto something if balance is shaky."}),
+ V("walking_lunge","Walking lunge","走路弓箭步","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Take a long step, lower the back knee toward the floor, push through the front foot into the next step. Reps per leg.",safety:"Front knee tracks over the toes.\nTake steps long enough that the front shin stays fairly upright.\nClear a straight path first."}),
+ V("step_up","Step-up","登階","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Whole foot on a knee-height box. Stand up through the front heel, then lower slowly. Reps per leg.",safety:"Use a stable box; push with the top leg, not the back foot.\nStart with a lower step if the knee complains."}),
+ V("leg_press","Leg press (feet high and wide)","腿推機（腳位高且寬）","lunge","lower","plate",{steps:[10,20,30,40,50,60,70,80,90,100],start:30,repMin:10,repMax:12,cues:"Feet high and wide on the platform. Lower until the knees are about 90°, then press up without locking the knees. Count only the plates on one side.",safety:"Never lock the knees at the top.\nDon't let the hips curl off the seat at the bottom; stop higher up.\nUse the safety stops, and load both sides equally."}),
+ V("cable_hip_abduction","Standing cable hip abduction","站姿滑輪髖外展","hip_abduction","lower","machine",{steps:[2.5,5,7.5,10,12.5,15,20,25],start:5,repMin:12,repMax:15,cues:"Ankle strap on the outside leg, hold on for balance. Lift the leg out to the side without leaning, then return slowly. Reps per leg.",safety:"Don't lean the torso to lift higher.\nKeep it light, slow and controlled."}),
+ V("cable_hip_adduction","Standing cable hip adduction","站姿滑輪髖內收","hip_adduction","lower","machine",{steps:[2.5,5,7.5,10,12.5,15,20,25],start:5,repMin:12,repMax:15,cues:"Ankle strap on the inside leg, hold on for balance. Swing the leg across in front of the standing leg, then return slowly. Reps per leg.",safety:"Inner-thigh strains are common: start light.\nControl the way back; don't let the cable snap the leg out."})
+);
+/* routine entries made before swapping existed have no movement field: find it by the version's id */
+for(const e of LIBRARY) if(e.movement && !MOVE_OF[e.id]) MOVE_OF[e.id]=e.movement;
+
 /* how to log the weight, by equipment */
 const EQUIP={lateral_raise:"dumbbell", goblet_squat:"dumbbell1", bar_curl:"barbell"};
 const EQUIP_TEXT={
- machine:["Machine or cable","Log the number on the weight stack. Ignore the machine's own weight; it's the same every time."],
- plate:["Plate-loaded machine","Log only the plates you add, both sides together. Not the machine's own weight."],
- dumbbell:["Dumbbells","Log one dumbbell's weight (per hand). 5 kg in each hand = 5."],
- dumbbell1:["One dumbbell","Log the weight of the dumbbell you hold."],
+ machine:["Stack machine or cable","Log the number the pin is in. Ignore the machine's own weight. Only compare with this same machine."],
+ plate:["Plate-loaded machine","Log the plates on ONE side. 10 on each side = 10 (the app shows 20 total). Don't count the machine's own weight."],
+ dumbbell:["Dumbbells, one in each hand","Log one dumbbell's weight. 5 kg in each hand = 5 (the app shows 10 total)."],
+ dumbbell1:["One dumbbell or weight, held with both hands","Log the weight of the one dumbbell you hold, even when both hands hold it."],
  kettlebell:["Kettlebell","Log the kettlebell's weight."],
- barbell:["Barbell","Log the bar plus plates. Fixed-weight bars show the total."],
+ barbell:["Barbell","Log the bar plus plates, as one total. Pick your bar's weight under the sets and the app shows the plates."],
+ smith:["Smith machine","Log the bar plus plates, as one total. Smith bars differ: pick what yours weighs under the sets."],
+ assisted:["Assisted machine","Log the help (the pin). Less help is progress, so a lower number is better."],
  bodyweight:["Bodyweight","Log reps. If you add weight, log only the added weight."],
  band:["Band","Log reps only."]};
 function equipOf(ex){ return (ex && (ex.equip || EQUIP[ex.id])) || ((ex && (ex.mode==="progress"||ex.mode==="steady")) ? "machine" : (ex && ex.mode==="bodyweight") ? "bodyweight" : ""); }
@@ -459,7 +608,7 @@ const SAFETY={
  bike_intervals:["Seat height: a slight bend in the knee at the bottom.","Keep the back long; no hunching over the bars."],
  cable_kickback:["Move only at the hip; don't arch the lower back to kick higher.","Keep the standing knee soft."]
 };
-function safetyFor(ex){ if(ex && ex.safety && ex.safety.trim()) return ex.safety.split(/\n+/).map(x=>x.trim()).filter(Boolean); const lib=ex && LIBRARY.find(x=>x.id===ex.id); if(lib && lib.safety) return lib.safety.split(/\n+/); return (ex && SAFETY[ex.id]) || GENERIC_SAFETY; }
+function safetyFor(ex){ if(ex && ex.safety && ex.safety.trim()) return ex.safety.split(/\\n|\n/).map(x=>x.trim()).filter(Boolean); const lib=ex && LIBRARY.find(x=>x.id===ex.id); if(lib && lib.safety) return lib.safety.split(/\\n|\n/).map(x=>x.trim()).filter(Boolean); return (ex && SAFETY[ex.id]) || GENERIC_SAFETY; }
 
 /* ========= STORAGE & GITHUB ========= */
 const LS = {
@@ -547,7 +696,7 @@ async function readyToEdit(){
 }
 async function ghImageURL(name){
   if(!name) return null;
-  const key=`${cfg.owner}/${cfg.repo}/images/${name}`;
+  const key=imgKey(name);
   if(imgMem[key]) return imgMem[key];
   let cache=null; try{ cache = await caches.open("gt-images-v1"); }catch(e){}
   const req=new Request("https://gt.local/"+key);
@@ -559,10 +708,10 @@ async function ghImageURL(name){
   const u=URL.createObjectURL(blob); imgMem[key]=u; return u;
 }
 const imgMem={};
-function cachedImg(name){ return name ? imgMem[`${cfg.owner}/${cfg.repo}/images/${name}`] : null; }
+function cachedImg(name){ return name ? imgMem[imgKey(name)] : null; }
 
 /* ========= DATA (cached per user for offline use) ========= */
-const store = { routines:null, routinesSha:null, logs:[], body:[], profile:{}, synced:null, error:null };
+const store = { routines:null, routinesSha:null, logs:[], body:[], profile:{}, synced:null, error:null, photos:{}, libExtra:[] };
 function cacheKey(k){ return `gt_${cfg.owner}_${cfg.repo}_${cfg.user}_${k}`; }
 /* ---- IndexedDB: the offline copy (much more room than localStorage; falls back to it if unavailable) ---- */
 const IDB=(()=>{ let dbp=null;
@@ -584,13 +733,15 @@ async function loadCache(){
   store.body = (await get("body")) ?? [];
   store.profile = (await get("profile")) ?? {};
   store.synced = (await get("synced")) ?? null;
+  store.photos = (await get("photos")) ?? {};
+  store.libExtra = (await get("libExtra")) ?? [];
   FC = (idb ? await IDB.get(repoKey()) : LS.get(repoKey(), null)) || {};
   const oldLogs=LS.get(cacheKey("logs"), null);       /* the copy kept before yearly files: only until the first sync */
   if(Object.keys(FC).some(p=>isLogFile(cfg.user,p))) rebuildLogs(); else store.logs=oldLogs||[];
   if(oldLogs!=null && idb) LS.del(cacheKey("logs"));
 }
 function saveCache(){
-  const snap={routines:store.routines, routinesSha:store.routinesSha, body:store.body, profile:store.profile, synced:store.synced}; const files=FC, rk=repoKey(), ck=k=>cacheKey(k);
+  const snap={routines:store.routines, routinesSha:store.routinesSha, body:store.body, profile:store.profile, synced:store.synced, photos:store.photos, libExtra:store.libExtra}; const files=FC, rk=repoKey(), ck=k=>cacheKey(k);
   (async()=>{ const idb=await IDB.ok(); for(const [k,v] of Object.entries(snap)){ if(idb) await IDB.set(ck(k),v); else LS.set(ck(k),v); } if(idb) await IDB.set(rk, files); else LS.set(rk, files); })();
 }
 function queueKey(){ return cacheKey("queue"); }
@@ -612,9 +763,11 @@ async function sync(){
   const p=paths(cfg.user);
   try{
     await flushQueue();
-    const [rt, bd, pp, pf] = await Promise.all([ghGet(p.routines), ghGet(p.body), ghGet("people.json"), ghGet(`profile/${cfg.user}.json`)]);
+    const [rt, bd, pp, pf, lj, imgs] = await Promise.all([ghGet(p.routines), ghGet(p.body), ghGet("people.json"), ghGet(`profile/${cfg.user}.json`), ghGet("library.json").catch(()=>null), ghList("images").catch(()=>null)]);
     await fetchLogs(cfg.user);
     if(pf){ try{ store.profile=JSON.parse(pf.text)||{}; }catch(e){} }
+    if(lj){ try{ const j=JSON.parse(lj.text); store.libExtra=Array.isArray(j)?j:(j.exercises||[]); }catch(e){} }
+    if(imgs){ store.photos=Object.fromEntries(imgs.filter(x=>x.type==="file").map(x=>[x.name,x.sha])); }
     if(pp){ try{ applyNames(JSON.parse(pp.text)); }catch(e){} }
     if(rt){ store.routines=JSON.parse(rt.text); store.routinesSha=rt.sha; }
     rebuildLogs();
@@ -705,25 +858,26 @@ function initSets(ex, date, dayId){
   date=date||localISO();
   const done = dayId ? savedOn(ex.id, date, dayId) : [];
   if(ex.mode==="cardio"||ex.mode==="intervals") return done.length ? [] : [{kg:0,reps:"",seconds:""}];
-  const adv=advise(ex, lastBefore(ex.id, date));
+  const adv=advise(effEx(ex), lastBefore(ex.id, date));
   let kg = done.length ? (done[done.length-1].kg||adv.kg||0) : (adv.kg||0);
   let planned = ex.sets||1;
-  if(lighterOn(date)){ planned=Math.max(1,Math.ceil(planned/2)); if(ex.mode==="progress"||ex.mode==="steady") kg=lighterKg(kg, ex.steps); }
+  if(lighterOn(date)){ planned=Math.max(1,Math.ceil(planned/2)); if(ex.mode==="progress"||ex.mode==="steady") kg=lightKgFor(ex, kg); }
   const n = Math.max(planned - done.length, done.length ? 0 : 1);
   return Array.from({length:n},()=>({kg, reps:"", seconds:""}));
 }
 function initDraft(day, date){
   const today=localISO();
   const saved=LS.get(draftKey(day.id), null);
-  if(saved && (saved.created||saved.date)===today && (!date || date===saved.date)){ saved.extras=saved.extras||[]; saved.created=today; return saved; }
-  const d={date:date||today, created:today, ex:{}, notes:"", extras:[]};
+  if(saved && (saved.created||saved.date)===today && (!date || date===saved.date)){ saved.extras=saved.extras||[]; saved.swaps=saved.swaps||{}; saved.tipsClosed=saved.tipsClosed||{}; saved.created=today; return saved; }
+  const d={date:date||today, created:today, ex:{}, notes:"", extras:[], swaps:{}, tipsClosed:{}};
   for(const ex of day.exercises) d.ex[ex.id]=initSets(ex, d.date, day.id);
   return d;
 }
 /* Today's list: extras added at the start (warm-ups), the routine, then extras added at the end. */
 function dayList(day){
   const ext=(draft&&draft.extras)||[];
-  return [...ext.filter(x=>x.pos==="start").map(x=>x.ex), ...day.exercises, ...ext.filter(x=>x.pos!=="start").map(x=>x.ex)];
+  const sw=(draft&&draft.swaps)||{};
+  return [...ext.filter(x=>x.pos==="start").map(x=>x.ex), ...day.exercises.map(e=>sw[e.id]||e), ...ext.filter(x=>x.pos!=="start").map(x=>x.ex)];
 }
 let draft=null, draftDay=null;
 function saveDraft(){ if(draft && draftDay) LS.set(draftKey(draftDay), draft); }
@@ -742,7 +896,7 @@ function renderDay(id){
   <div class="card"><div class="f" id="feel_lbl">How did it feel? · 感覺如何</div><div class="chips" role="group" aria-labelledby="feel_lbl">${[[1,"Easy · 輕鬆"],[2,"OK · 還好"],[3,"Hard · 吃力"],[4,"Exhausted · 很累"]].map(([v,l])=>`<button class="btn small" data-act="feel" data-v="${v}" aria-pressed="${draft.feel===v}">${l}</button>`).join("")}</div>
   <label class="f" for="notes">Notes for today</label><textarea class="t" id="notes" placeholder="Sleep, soreness, anything unusual">${esc(draft.notes)}</textarea></div>`;
   setBar(`<button class="btn" data-act="discard">Clear</button><button class="btn primary" data-act="finish">Save workout</button>`);
-  list.forEach(ex=>{ if(ex.photo && !cachedImg(ex.photo)) ghImageURL(ex.photo).then(u=>{ const el=document.querySelector(`[data-thumb="${ex.id}"]`); if(el&&u){ el.classList.remove("empty"); el.innerHTML=`<img class="thumb" src="${u}" alt="">`; } }); });
+  list.forEach(ex=>{ const p0=photosFor(ex)[0]; if(p0 && !cachedImg(p0)) ghImageURL(p0).then(u=>{ const el=document.querySelector(`[data-thumb="${ex.id}"]`); if(el&&u){ el.classList.remove("empty"); el.innerHTML=`<img class="thumb" src="${u}" alt="">`; } }); });
 }
 function isRun(ex){ return !!ex && (ex.run===true || /(^|_)run($|_)/.test(ex.id)); }
 function countMode(ex){ if(ex.mode!=="time") return null; const saved=LS.get(cacheKey("count_"+ex.id),null); if(saved) return saved;
@@ -773,10 +927,10 @@ function runCard(ex, last, done){
 }
 function exerciseCard(ex){
   if(isRun(ex)){ const last=lastBefore(ex.id, draft.date); return runCard(ex, last, savedOn(ex.id, draft.date, draftDay)); }
-  const last=lastBefore(ex.id, draft.date); let adv=advise(ex,last);
+  const last=lastBefore(ex.id, draft.date); let adv=advise(effEx(ex),last); const ph0=photosFor(ex)[0]||"";
   const light=lighterOn(draft.date);
   if(light && ex.mode!=="cardio" && ex.mode!=="intervals"){
-    const n=Math.max(1,Math.ceil((ex.sets||1)/2)); const lk=(ex.mode==="progress"||ex.mode==="steady")? lighterKg(adv.kg, ex.steps) : 0;
+    const n=Math.max(1,Math.ceil((ex.sets||1)/2)); const lk=(ex.mode==="progress"||ex.mode==="steady")? lightKgFor(ex, adv.kg) : 0;
     adv={kind:"info", text:`Lighter week: ${n} set${n>1?"s":""}${lk?` at about ${fmtKg(lk)} kg`:""}. Stop well before it gets hard.`, kg:lk};
   }
   const done=savedOn(ex.id, draft.date, draftDay); const off=done.length;
@@ -805,15 +959,17 @@ function exerciseCard(ex){
   const multi = !(ex.mode==="cardio"||ex.mode==="intervals");
   const isExtra = (draft.extras||[]).some(x=>x.ex.id===ex.id);
   return `<section class="ex" aria-label="${esc(ex.name)}">
-    <div class="exhead"><button class="thumb ${cachedImg(ex.photo)?"":"empty"}" data-thumb="${ex.id}" data-tips="${esc(ex.id)}" aria-label="Photo and tips for ${esc(ex.name)}">${cachedImg(ex.photo)?`<img class="thumb" src="${cachedImg(ex.photo)}" alt="">`:(ex.photo?"…":"Tips")}</button>
+    <div class="exhead"><button class="thumb ${cachedImg(ph0)?"":"empty"}" data-thumb="${ex.id}" data-tips="${esc(ex.id)}" aria-label="Photo and tips for ${esc(ex.name)}">${cachedImg(ph0)?`<img class="thumb" src="${cachedImg(ph0)}" alt="">`:(ph0?"…":"Tips")}</button>
       <div><div class="exname">${esc(ex.name)}${isExtra?` <span class="tag">Extra today</span>`:""}</div><div class="zh">${esc(ex.zh||"")}</div>
-      <div class="target">${esc(light && ex.mode!=="cardio" && ex.mode!=="intervals" ? targetText({...ex, sets:Math.max(1,Math.ceil((ex.sets||1)/2))})+" · lighter" : targetText(ex))}${equipOf(ex)==="dumbbell"?` <span class="tag">kg per hand</span>`:""}</div><div class="lasttime">${esc(lastTxt)}</div></div></div>
+      <div class="target">${esc(light && ex.mode!=="cardio" && ex.mode!=="intervals" ? targetText({...ex, sets:Math.max(1,Math.ceil((ex.sets||1)/2))})+" · lighter" : targetText(ex))}${equipTag(ex)?` <span class="tag">${esc(equipTag(ex))}</span>`:""}</div><div class="lasttime">${esc(lastTxt)}</div></div></div>
     <div class="tip ${adv.kind==="up"?"up":""}">${esc(cm==="reps"?`${ex.sets} sets: count the reps you do in each.`:adv.text)}</div>
+    ${logLineHTML(ex,sets)}${usualHTML(ex)}
     ${cm?`<div class="seg countseg" role="group" aria-label="Count by"><button data-act="countmode" data-ex="${esc(ex.id)}" data-v="time" aria-pressed="${cm==="time"}">Time</button><button data-act="countmode" data-ex="${esc(ex.id)}" data-v="reps" aria-pressed="${cm==="reps"}">Reps</button></div>`:""}
     ${off?`<p class="saved">✓ Saved ${draft.date===localISO()?"today":"for this date"}: ${esc(done.map(s=> ex.mode==="time"?(s.seconds>0?`${s.seconds}s`:`${s.reps} reps`): ex.mode==="cardio"?`${Math.round(s.seconds/60)} min`: ex.mode==="intervals"?`${s.reps} rounds`: (s.kg?`${fmtKg(s.kg)}×${s.reps}`:`${s.reps}`)).join(", "))} <button class="linkbtn" data-go="editlog/${encodeURIComponent(ex.id)}/${draft.date}">Edit</button></p>`:""}
-    ${ex.cues?`<details class="cues"><summary>Form tips</summary>${esc(ex.cues)}</details>`:""}
+    ${cuesHTML(ex)}
+    ${barHTML(ex)}
     <div class="sets">${rows}</div>
-    <div class="setbtns">${(multi||!sets.length)?`<button class="btn small" data-act="addset" data-ex="${ex.id}">Add set</button><button class="btn small" data-act="delset" data-ex="${ex.id}">Remove set</button>`:""}${last?`<button class="btn small" data-act="same" data-ex="${ex.id}">Copy last time</button>`:""}<button class="btn small" data-go="history/${encodeURIComponent(ex.id)}">History</button>${isExtra?`<button class="btn small danger" data-act="rmextra" data-ex="${esc(ex.id)}">Remove</button>`:""}</div>
+    <div class="setbtns">${(multi||!sets.length)?`<button class="btn small" data-act="addset" data-ex="${ex.id}">Add set</button><button class="btn small" data-act="delset" data-ex="${ex.id}">Remove set</button>`:""}${last?`<button class="btn small" data-act="same" data-ex="${ex.id}">Copy last time</button>`:""}${isSwappable(ex)?`<button class="btn small" data-act="swap" data-ex="${esc(ex.id)}">Swap</button>`:""}<button class="btn small" data-go="history/${encodeURIComponent(ex.id)}">History</button>${isExtra?`<button class="btn small danger" data-act="rmextra" data-ex="${esc(ex.id)}">Remove</button>`:""}</div>
   </section>`;
 }
 function targetText(ex){
@@ -824,10 +980,10 @@ function targetText(ex){
 }
 function weightSelect(ex,i,kg){
   const bw = ex.mode==="bodyweight";
-  const steps=(bw ? [0, ...((ex.steps&&ex.steps.length)?ex.steps:ADD_STEPS)] : (ex.steps||[])).slice();
+  const steps=(bw ? [0, ...((ex.steps&&ex.steps.length)?ex.steps:ADD_STEPS)] : (effEx(ex).steps||[])).slice();
   if((kg||bw) && !steps.some(s=>Math.abs(s-kg)<1e-9)) steps.push(kg); steps.sort((a,b)=>a-b);
-  const each = equipOf(ex)==="dumbbell";
-  const label = s => bw ? (s? `+${fmtKg(s)} kg${each?" each":""}` : "Bodyweight") : `${fmtKg(s)} kg${each?" each":""}`;
+  const eq=equipOf(ex); const suffix = eq==="dumbbell"?" each": eq==="plate"?" each side": eq==="assisted"?" help":"";
+  const label = s => bw ? (s? `+${fmtKg(s)} kg${suffix}` : "Bodyweight") : `${fmtKg(s)} kg${suffix}`;
   return `<div class="kg">${plate(kg)}<select aria-label="${bw?"Added weight":"Weight"} for set ${i+1}" data-kg="${esc(ex.id)}" data-i="${i}">${steps.filter((v,j,a)=>a.findIndex(x=>Math.abs(x-v)<1e-9)===j).map(s=>`<option value="${s}" ${Math.abs(s-kg)<1e-9?"selected":""}>${label(s)}</option>`).join("")}<option value="other">Other…</option></select></div>`;
 }
 /* ✓: one tap logs the planned reps/time at the chosen weight; tap again to undo. Typing a number also counts as done. */
@@ -848,7 +1004,8 @@ function setVal(exId,i,field,raw){
 function findEx(exId){
   for(const d of store.routines?.days||[]) for(const e of d.exercises) if(e.id===exId) return e;
   const x=(draft&&draft.extras||[]).find(x=>x.ex.id===exId); if(x) return x.ex;
-  const lib=LIBRARY.find(x=>x.id===exId); if(lib) return lib;
+  const sw=draft&&draft.swaps&&Object.values(draft.swaps).find(x=>x.id===exId); if(sw) return sw;
+  const lb=lib().find(x=>x.id===exId); if(lb) return lb;
   if(String(exId).startsWith("x:")){
     const rows=store.logs.filter(r=>r.exercise===exId);
     const mode = rows.some(r=>num(r.kg)>0) ? "progress" : rows.some(r=>num(r.seconds)>0 && !num(r.reps)) ? "cardio" : "bodyweight";
@@ -1061,7 +1218,7 @@ const CATS=[["all","All · 全部"],["plan","Your plan · 我的計畫"],["upper
 function addCandidates(dayId){
   const day=dayById(dayId); const have=new Set(dayList(day).map(e=>e.id)); const seen=new Set(); const out=[];
   for(const d of store.routines.days||[]){ if(d.id===dayId) continue; for(const e of d.exercises){ if(have.has(e.id)||seen.has(e.id)) continue; seen.add(e.id); out.push({ex:e, plan:d}); } }
-  for(const e of LIBRARY){ if(have.has(e.id)||seen.has(e.id)) continue; seen.add(e.id); out.push({ex:e, plan:null}); }
+  for(const e of lib()){ if(have.has(e.id)||seen.has(e.id)) continue; seen.add(e.id); out.push({ex:e, plan:null}); }
   return out;
 }
 function addListHTML(dayId){
@@ -1187,20 +1344,190 @@ async function saveEditBody(date, k, del){
 }
 
 /* ---- photo + tips card ---- */
-async function openTips(exId){
+/* ========= LIBRARY, PHOTOS, VERSIONS ========= */
+/* built-in exercises, then library.json from gym-log (so tips and photos can change without a new app), then machines you typed in */
+function lib(){
+  const m=new Map(LIBRARY.map(e=>[e.id,e]));
+  for(const e of store.libExtra||[]) if(e&&e.id) m.set(e.id, Object.assign({}, m.get(e.id)||{}, e));
+  for(const e of (store.routines&&store.routines.custom)||[]) if(e&&e.id) m.set(e.id, e);
+  return [...m.values()];
+}
+const imgSha=name=>(store.photos&&store.photos[name])||"";
+function imgKey(name){ return `${cfg.owner}/${cfg.repo}/images/${name}@${imgSha(name)}`; }
+/* every photo for an exercise: its own file, then _2, _3 and _4 */
+function photosFor(ex){
+  if(!ex) return [];
+  const idx=store.photos||{}, have=n=>Object.prototype.hasOwnProperty.call(idx,n);
+  const bases=[]; const add=b=>{ if(b && !bases.includes(b)) bases.push(b); };
+  if(ex.photo) add(String(ex.photo).replace(/\.[a-z]+$/i,""));
+  add(ex.id); if(PHOTO_ALIAS[ex.id]) add(PHOTO_ALIAS[ex.id]);
+  const out=[];
+  for(const b of bases) for(const suf of ["","_2","_3","_4"]) for(const ext of [".jpg",".jpeg",".png"]){ const n=b+suf+ext; if(have(n) && !out.includes(n)) out.push(n); }
+  if(!out.length && ex.photo && !Object.keys(idx).length) out.push(ex.photo);
+  return out;
+}
+/* all versions of the same movement: your routine, the library, and your own machines (the exercise itself first) */
+function versionsOf(ex){
+  const mv=movementOf(ex); const out=[]; const seen=new Set();
+  const push=e=>{ if(e && !seen.has(e.id)){ seen.add(e.id); out.push(e); } };
+  push(ex); if(!mv) return out;
+  for(const d of store.routines?.days||[]) for(const e of d.exercises) if(movementOf(e)===mv) push(e);
+  for(const e of lib()) if(movementOf(e)===mv && (e.mode==="progress"||e.mode==="steady"||e.mode==="bodyweight")) push(e);
+  return out;
+}
+/* a routine entry without its own how-to or safety text borrows them from the library (built-in or library.json) */
+function fillText(ex){ if(!ex || (ex.cues && ex.safety)) return ex; const l=lib().find(x=>x.id===ex.id); return l ? Object.assign({}, ex, {cues:ex.cues||l.cues||"", safety:ex.safety||l.safety||""}) : ex; }
+function isSwappable(ex){ return !!ex && !isRun(ex) && (ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight"); }
+function sessionCount(exId){ return sessionsFor(store.logs, exId).length; }
+function equipLabel(ex){ const e=equipOf(ex); return e&&EQUIP_TEXT[e]?EQUIP_TEXT[e][0]:""; }
+function equipTag(ex){ const e=equipOf(ex); return e==="dumbbell"?"kg per hand":e==="plate"?"kg per side":e==="assisted"?"kg of help, less is better":""; }
+function unitNote(ex){ const e=equipOf(ex); return e==="dumbbell"?" per hand":e==="plate"?" per side":e==="assisted"?" of help":""; }
+function lastUsedText(id){ const s=sessionsFor(store.logs,id)[0]; if(!s) return "New for you"; const w=workingWeight(s.sets,0); return `Last ${niceDate(s.date)}${w?" · "+fmtKg(w)+" kg":""}`; }
+
+/* bar weight: barbells and Smith machines. The bar is remembered per exercise. */
+function barOf(ex){ if(!ex || ex.bar==null) return null; const v=LS.get(cacheKey("bar_"+ex.id), null); return v!=null ? num(v) : num(ex.bar); }
+function effEx(ex){ if(!ex || ex.bar==null) return ex; const b=barOf(ex); return Object.assign({}, ex, {steps:barSteps(b)}); }
+function lightKgFor(ex, kg){ return equipOf(ex)==="assisted" ? kg : lighterKg(kg, effEx(ex).steps); }
+function barHTML(ex){
+  if(ex.bar==null) return "";
+  const b=barOf(ex); const opts=(equipOf(ex)==="smith"?[0,7.5,10,15,20]:[20,15,10,7.5,5]).slice(); if(!opts.includes(b)) opts.push(b); opts.sort((x,y)=>y-x);
+  return `<div class="barrow"><label for="bar_${esc(ex.id)}">${equipOf(ex)==="smith"?"Smith bar weighs":"Bar weighs"}</label><select id="bar_${esc(ex.id)}" data-bar="${esc(ex.id)}">${opts.map(o=>`<option value="${o}" ${o===b?"selected":""}>${fmtKg(o)} kg${o===0?" (counterbalanced)":""}</option>`).join("")}</select></div>`;
+}
+function logLineHTML(ex, sets){
+  if(!(ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight")) return "";
+  const s=(sets||[]).find(x=>num(x.kg)>0)||(sets||[])[0]||{};
+  const t=loggingLine(ex, s.kg, barOf(ex)); return t ? `<div class="logline"><b>Logging:</b> ${esc(t)}</div>` : "";
+}
+function cuesHTML(ex){
+  ex=fillText(ex);
+  const first = sessionCount(ex.id)<3; const closed = draft && draft.tipsClosed && draft.tipsClosed[ex.id];
+  const how = EQUIP_TEXT[equipOf(ex)];
+  if(!ex.cues && !first) return "";
+  const open = first && !closed;
+  return `<details class="cues" data-cue="${esc(ex.id)}" ${open?"open":""}><summary>Form tips${first?" · first sessions":""}</summary>${ex.cues?`<p>${esc(ex.cues)}</p>`:""}${first?`${how?`<p><b>How to log it:</b> ${esc(how[1])}</p>`:""}<ul>${safetyFor(ex).slice(0,3).map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`:""}</details>`;
+}
+/* the routine slot an exercise on today's list stands in for (it may be a swap for today) */
+function slotFor(ex){
+  const day=dayById(draftDay); if(!day) return null;
+  return day.exercises.find(e=>e.id===ex.id || (draft.swaps && draft.swaps[e.id] && draft.swaps[e.id].id===ex.id)) || null;
+}
+function usualHTML(ex){
+  if(!isSwappable(ex)) return "";
+  const slot=slotFor(ex); if(!slot || !movementOf(slot)) return "";
+  const ids=versionsOf(slot).map(e=>e.id);
+  const cand=usualCandidate(store.logs, ids, slot.id, 3); if(!cand) return "";
+  if(ex.id!==slot.id && ex.id!==cand) return "";
+  const no=LS.get(cacheKey(`usual_no_${slot.id}_${cand}`), null); if(no && no>addDays(localISO(),-28)) return "";
+  const c=findEx(cand); if(!c) return "";
+  return `<div class="usual"><b>Make ${esc(c.name)} your usual?</b><br>Your last 3 ${esc(MOVES[movementOf(slot)]?.name.toLowerCase()||"sessions")} sessions were on it. Your routine would switch to it, and its history stays.<div class="row"><button class="btn small primary" data-act="usualyes" data-slot="${esc(slot.id)}" data-id="${esc(cand)}">Yes, make it my usual</button><button class="btn small" data-act="usualno" data-slot="${esc(slot.id)}" data-id="${esc(cand)}">Not now</button></div></div>`;
+}
+
+async function putRoutines(next, msg){
+  const p=paths(cfg.user); const cur=await ghGet(p.routines);
+  const sha=await ghPut(p.routines, JSON.stringify(next,null,2)+"\n", cur?cur.sha:undefined, `${USERS[cfg.user]}: ${msg}`);
+  store.routines=next; store.routinesSha=sha; saveCache();
+}
+function customVersion(base, name, equip){
+  const mv=movementOf(base); const plain=(equip==="bodyweight"||equip==="band");
+  const o={id:"x:"+name, name, zh:"", area:base.area||MOVES[mv]?.area||areaOf(base.id,""), mode:plain?"bodyweight":"progress", equip, sets:base.sets||3, repMin:base.repMin||8, repMax:base.repMax||12, cues:"", custom:true};
+  if(mv) o.movement=mv;
+  if(DEFAULT_STEPS[equip]) o.steps=DEFAULT_STEPS[equip].slice();
+  if(equip==="barbell") o.bar=20; if(equip==="smith") o.bar=15;
+  return o;
+}
+/* Swap an exercise: just for today's workout, or in the routine from now on. Every version keeps its own history. */
+async function doSwap(origId, nx, when, isNew){
+  const day=dayById(draftDay); if(!day || !nx) return;
+  const swaps=(draft.swaps=draft.swaps||{});
+  const slotId=Object.keys(swaps).find(k=>swaps[k].id===origId) || origId;
+  const inRoutine=day.exercises.some(e=>e.id===slotId);
+  const same = nx.id===origId;
+  const entered=(draft.ex[origId]||[]).some(s=>num(s.reps)>0||num(s.seconds)>0);
+  if(!same && entered){ toast("This exercise already has sets entered. Clear them or save the workout first, then swap."); return; }
+  if(!same && dayList(day).some(e=>e.id===nx.id)){ toast("That one is already in today's workout."); return; }
+  const cur=findEx(origId); const slotEx=day.exercises.find(e=>e.id===slotId);
+  nx=JSON.parse(JSON.stringify(nx));
+  if(cur && (cur.mode==="progress"||cur.mode==="steady"||cur.mode==="bodyweight") && (nx.mode==="progress"||nx.mode==="steady"||nx.mode==="bodyweight") && cur.sets){ nx.sets=cur.sets; nx.repMin=cur.repMin; nx.repMax=cur.repMax; }   // the plan's sets follow the movement
+  let note="";
+  if(isNew){   // remember a machine you typed in, so it's in the list next time
+    const next=JSON.parse(JSON.stringify(store.routines)); next.custom=[...(next.custom||[]).filter(c=>c.id!==nx.id), nx];
+    store.routines=next; saveCache();
+    try{ await putRoutines(next, `add ${nx.name}`); }catch(e){ note=" It couldn't be saved to GitHub yet, so it works for today only."; }
+  }
+  if(when==="now" && inRoutine){
+    const next=JSON.parse(JSON.stringify(store.routines)); const d=next.days.find(x=>x.id===draftDay); const i=d.exercises.findIndex(e=>e.id===slotId);
+    if(i>=0){ d.exercises[i]=nx; }
+    try{
+      await putRoutines(next, `swap to ${nx.name} in ${d.name}`);
+      delete swaps[slotId]; if(!same){ delete draft.ex[origId]; }
+      draft.ex[nx.id]=draft.ex[nx.id]||initSets(nx, draft.date, draftDay);
+      saveDraft(); toast(`${nx.name} is now in your routine.${note}`); renderDay(draftDay); return;
+    }catch(e){ toast(navigator.onLine? `Couldn't update the routine (${e.message}). Swapped for today only.` : "No connection, so the routine wasn't changed. Swapped for today only."); }
+  }
+  if(!same){
+    if(inRoutine){ if(slotEx && nx.id===slotEx.id) delete swaps[slotId]; else swaps[slotId]=nx; }
+    else draft.extras=(draft.extras||[]).map(x=>x.ex.id===origId?{...x,ex:nx}:x);
+    delete draft.ex[origId]; draft.ex[nx.id]=initSets(nx, draft.date, draftDay);
+  }
+  saveDraft(); if(!note && !same) toast(`Swapped to ${nx.name} for today.`); else if(note) toast(`Swapped to ${nx.name} for today.${note}`);
+  renderDay(draftDay);
+}
+function openSwap(exId){
   const ex=findEx(exId); if(!ex) return;
-  const sheet=document.createElement("div"); sheet.className="sheet"; sheet.setAttribute("role","dialog"); sheet.setAttribute("aria-label",`${ex.name}: photo and tips`);
-  const body=img=>`<div class="sheetcard"><button class="iconbtn closebtn" data-close aria-label="Close">Close</button>
-    ${img?`<img src="${img}" alt="${esc(ex.name)}">`:""}
-    <h2>${esc(ex.name)}</h2><div class="zh">${esc(ex.zh||"")}</div>
-    ${ex.cues?`<h3>How to do it</h3><p>${esc(ex.cues)}</p>`:""}
-    ${equipOf(ex)&&EQUIP_TEXT[equipOf(ex)]?`<h3>How to log the weight</h3><p>${esc(EQUIP_TEXT[equipOf(ex)][1])}</p>`:""}
-    <div class="warn"><h3>Avoid injury</h3><ul>${safetyFor(ex).map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div></div>`;
-  sheet.innerHTML=body(cachedImg(ex.photo));
-  sheet.addEventListener("click",e=>{ if(e.target===sheet || e.target.closest("[data-close]")) sheet.remove(); });
+  const mv=movementOf(ex); const vers=versionsOf(ex); let when="today";
+  const sheet=document.createElement("div"); sheet.className="sheet"; sheet.setAttribute("role","dialog"); sheet.setAttribute("aria-label",`Swap ${ex.name}`);
+  const row=v=>`<div class="libitem"><div><b>${esc(v.name)}</b>${v.zh?` <span class="zh">${esc(v.zh)}</span>`:""}<br><span class="sub">${esc(equipLabel(v))}${equipLabel(v)?" · ":""}${esc(lastUsedText(v.id))}</span></div>${v.id===ex.id?`<span class="tag">Now</span>`:`<button class="btn small" data-swapto="${esc(v.id)}">Use this</button>`}</div>`;
+  sheet.innerHTML=`<div class="sheetcard"><button class="iconbtn closebtn" data-close aria-label="Close">Close</button>
+   <h2>Swap · ${esc(mv&&MOVES[mv]?MOVES[mv].name:ex.name)}</h2><div class="zh">${esc(mv&&MOVES[mv]?MOVES[mv].zh:"")}</div>
+   <p class="sub">Machine busy, or a different gym? Pick one that trains the same muscles. Each version keeps its own weights and history.</p>
+   <div class="chips" role="group" aria-label="Swap for"><button class="btn small" data-swapwhen="today" aria-pressed="true">Just today</button><button class="btn small" data-swapwhen="now" aria-pressed="false">From now on</button></div>
+   ${vers.map(row).join("")}
+   <h3>One that isn't listed</h3>
+   <label class="f" for="sw_name">Name of the machine</label><input class="t" id="sw_name" placeholder="for example Hammer Strength chest press" maxlength="40">
+   <label class="f" for="sw_equip">How is the weight shown?</label><select class="t" id="sw_equip">${Object.entries(EQUIP_TEXT).filter(([k])=>k!=="band"&&k!=="bodyweight").map(([k,[l]])=>`<option value="${k}" ${k==="machine"?"selected":""}>${esc(l)}</option>`).join("")}</select>
+   <p class="sub" id="sw_help">${esc(EQUIP_TEXT.machine[1])}</p>
+   <button class="btn" data-swapnew>Use it</button></div>`;
+  sheet.addEventListener("change",e=>{ if(e.target.id==="sw_equip"){ const h=sheet.querySelector("#sw_help"); if(h) h.textContent=EQUIP_TEXT[e.target.value][1]; } });
+  sheet.addEventListener("click",async e=>{
+    if(e.target===sheet || e.target.closest("[data-close]")){ sheet.remove(); return; }
+    const w=e.target.closest("[data-swapwhen]"); if(w){ when=w.dataset.swapwhen; sheet.querySelectorAll("[data-swapwhen]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.swapwhen===when)); return; }
+    const t=e.target.closest("[data-swapto]"); if(t){ const nx=vers.find(v=>v.id===t.dataset.swapto); sheet.remove(); await doSwap(exId, nx, when, false); return; }
+    if(e.target.closest("[data-swapnew]")){
+      const name=cleanName(sheet.querySelector("#sw_name").value); if(!name){ toast("Give it a name first."); return; }
+      const eq=sheet.querySelector("#sw_equip").value; sheet.remove(); await doSwap(exId, customVersion(ex,name,eq), when, true);
+    }
+  });
   document.addEventListener("keydown", function k(e){ if(e.key==="Escape"){ sheet.remove(); document.removeEventListener("keydown",k);} });
   document.body.appendChild(sheet); sheet.querySelector("[data-close]").focus();
-  if(ex.photo && !cachedImg(ex.photo)){ const u=await ghImageURL(ex.photo); if(u && sheet.isConnected) sheet.innerHTML=body(u); }
+}
+
+/* photos and tips: several photos, tap one to enlarge */
+async function openTips(exId){
+  const ex=fillText(findEx(exId)); if(!ex) return;
+  const photos=photosFor(ex); let cur=0;
+  const sheet=document.createElement("div"); sheet.className="sheet"; sheet.setAttribute("role","dialog"); sheet.setAttribute("aria-label",`${ex.name}: photo and tips`);
+  const draw=()=>{
+    const urls=photos.map(n=>cachedImg(n));
+    const gal = photos.length ? `<div class="gal">${urls[cur]?`<img class="main" data-zoom="${cur}" src="${urls[cur]}" alt="${esc(ex.name)}, photo ${cur+1} of ${photos.length}. Tap to enlarge.">`:`<div class="thumb empty" style="width:100%;height:120px">Loading photo…</div>`}${photos.length>1?`<div class="thumbs">${photos.map((n,i)=>`<button data-pick="${i}" aria-pressed="${i===cur}" aria-label="Photo ${i+1}">${urls[i]?`<img src="${urls[i]}" alt="">`:"…"}</button>`).join("")}</div>`:""}${urls[cur]?`<p class="sub small">Tap the photo to enlarge.</p>`:""}</div>` : "";
+    const how=EQUIP_TEXT[equipOf(ex)];
+    sheet.innerHTML=`<div class="sheetcard"><button class="iconbtn closebtn" data-close aria-label="Close">Close</button>${gal}
+      <h2>${esc(ex.name)}</h2><div class="zh">${esc(ex.zh||"")}</div>
+      ${ex.cues?`<h3>How to do it</h3><p>${esc(ex.cues)}</p>`:""}
+      ${how?`<h3>How to log the weight</h3><p>${esc(how[1])}</p>`:""}
+      <div class="warn"><h3>Avoid injury</h3><ul>${safetyFor(ex).map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div></div>`;
+  };
+  draw();
+  sheet.addEventListener("click",e=>{
+    if(e.target===sheet || e.target.closest("[data-close]")){ sheet.remove(); return; }
+    const p=e.target.closest("[data-pick]"); if(p){ cur=+p.dataset.pick; draw(); return; }
+    const z=e.target.closest("[data-zoom]"); if(z){
+      const ov=document.createElement("div"); ov.className="zoomov"; ov.setAttribute("role","dialog"); ov.setAttribute("aria-label","Enlarged photo, tap to close");
+      ov.innerHTML=`<img src="${z.getAttribute("src")}" alt="${esc(ex.name)}">`; ov.addEventListener("click",()=>ov.remove()); document.body.appendChild(ov);
+    }
+  });
+  document.addEventListener("keydown", function k(e){ if(e.key==="Escape"){ const ov=document.querySelector(".zoomov"); if(ov) ov.remove(); else { sheet.remove(); document.removeEventListener("keydown",k);} } });
+  document.body.appendChild(sheet); sheet.querySelector("[data-close]").focus();
+  photos.forEach(n=>{ if(!cachedImg(n)) ghImageURL(n).then(u=>{ if(u && sheet.isConnected) draw(); }); });
 }
 
 /* ---- progress & comparison ---- */
@@ -1278,14 +1605,24 @@ async function renderProgress(){
   const stackA=[{name:"Upper body",color:"var(--p20)",values:perWeek(weeks,inArea(A.logs,"upper"),()=>1)},{name:"Lower body",color:"var(--p15)",values:perWeek(weeks,inArea(A.logs,"lower"),()=>1)},{name:"Core",color:"var(--p10)",values:perWeek(weeks,inArea(A.logs,"core"),()=>1)}];
   const tonnage=[{name:"Upper body",color:"var(--p20)",values:perWeek(weeks,inArea(A.logs,"upper"),r=>num(r.kg)*num(r.reps))},{name:"Lower body",color:"var(--p15)",values:perWeek(weeks,inArea(A.logs,"lower"),r=>num(r.kg)*num(r.reps))}];
   const cardioMin=rows=>perWeek(weeks,inArea(rows,"cardio"),r=>Math.round(num(r.seconds)/60));
-  const lifts=[], prs=[];
-  for(const d of store.routines?.days||[]) for(const ex of d.exercises){
+  const lifts=[], prs=[], assisted=[];
+  const exList=[]; const seenIds=new Set(); const pushEx=e=>{ if(e && !seenIds.has(e.id)){ seenIds.add(e.id); exList.push(e); } };
+  for(const d of store.routines?.days||[]) d.exercises.forEach(pushEx);
+  const loggedIds=new Set([...A.logs, ...(B?B.logs:[])].map(r=>r.exercise));
+  for(const e of lib()) if(loggedIds.has(e.id)) pushEx(e);      // versions you swapped to are charted too
+  for(const ex of exList){
     if(!(ex.mode==="progress"||ex.mode==="steady")) continue;
+    if(equipOf(ex)==="assisted"){
+      const ap=sessionsFor(A.logs,ex.id).reverse().map(s=>({d:s.date,v:workingWeight(s.sets,ex.sets,true)})).filter(p=>p.v>0);
+      if(ap.length>=2) assisted.push({ex,pa:ap}); continue;
+    }
     const toPts=logs=>sessionsFor(logs,ex.id).reverse().map(s=>({d:s.date,v:Math.round(bestE1rm(s.sets)*2)/2, w:workingWeight(s.sets,ex.sets)})).filter(p=>p.v>0);
     const pa=toPts(A.logs), pb=B?toPts(B.logs):[];
     if(pa.length>=2 || pb.length>=2) lifts.push({ex,pa,pb});
     if(ex.mode==="progress") prs.push(...prsOf(A.logs, ex, 30));
   }
+  /* one chart per movement, with a line for each version you've used */
+  const liftGroups=[]; { const byKey={}; for(const l of lifts){ const k=movementOf(l.ex)||("id:"+l.ex.id); (byKey[k]=byKey[k]||{mv:movementOf(l.ex),versions:[]}).versions.push(l); if(byKey[k].versions.length===1) liftGroups.push(byKey[k]); } }
   prs.sort((x,y)=>x.date<y.date?1:-1);
   const bodyPts=rows=>rows.filter(r=>num(r.weight_kg)>0).sort((x,y)=>x.date<y.date?-1:1).map(r=>({d:r.date,v:num(r.weight_kg)}));
   const bwA=bodyPts(A.body), bwB=B?bodyPts(B.body):[];
@@ -1310,9 +1647,15 @@ async function renderProgress(){
   <div class="card"><h2 class="sec">Strength · 肌力</h2>
     ${prs.length?`<h3 style="font-size:15px;margin:4px 0">Recent personal records</h3><ul class="insights">${prs.slice(0,6).map(p=>`<li>${esc(niceDate(p.date))} · <b>${esc(p.ex.name)}</b>: ${esc(p.text)}</li>`).join("")}</ul>`:""}
     <p class="sub">Estimated max (1RM) from your best set each session. It rises when you add reps, even if your gym's weight steps are big.</p>
-    ${lifts.length? (()=>{ const one=l=>{ const last=l.pa[l.pa.length-1]; return `<h3 style="font-size:15px;margin:12px 0 0">${esc(l.ex.name)}${l.ex.zh?` · <span class="zh">${esc(l.ex.zh)}</span>`:""}</h3>${last?`<p class="sub" style="margin:0">Now: ${esc(fmtKg(last.w))} kg working weight · est. max ${esc(fmtKg(last.v))} kg${l.ex.mode==="steady"?" (legs: keep steady)":""}</p>`:""}${lines([...(B?[{name:USERS[them],color:colB,points:l.pb}]:[]),{name:USERS[me],color:colA,points:l.pa}],"kg")}`; };
-       const sorted=lifts.slice().sort((a,b)=>b.pa.length-a.pa.length); const top=sorted.slice(0,3), rest=sorted.slice(3);
-       return (B?legend([{name:USERS[me],color:colA},{name:USERS[them],color:colB}]):"")+top.map(one).join("")+(rest.length?`<details class="more"><summary>Show all lifts (${lifts.length})</summary>${rest.map(one).join("")}</details>`:"")+`<p class="sub small">Tap a dot to see its value.</p>`; })() : `<p class="empty">Charts appear once an exercise has been logged twice.</p>`}</div>
+    ${liftGroups.length? (()=>{ const pal=["var(--p20)","var(--p15)","var(--p10)","var(--p25)","var(--pother)"];
+       const one=g=>{ const multi=g.versions.length>1; const e0=g.versions[0].ex; const mvInfo=g.mv&&MOVES[g.mv];
+         const head = multi&&mvInfo ? `${esc(mvInfo.name)} · <span class="zh">${esc(mvInfo.zh)}</span>` : `${esc(e0.name)}${e0.zh?` · <span class="zh">${esc(e0.zh)}</span>`:""}`;
+         const nows=g.versions.map(v=>{ const last=v.pa[v.pa.length-1]; return last?`<p class="sub" style="margin:0">${multi?`<b>${esc(v.ex.name)}</b>: `:"Now: "}${esc(fmtKg(last.w))} kg${esc(unitNote(v.ex))} working weight · est. max ${esc(fmtKg(last.v))} kg${v.ex.mode==="steady"?" (legs: keep steady)":""}</p>`:""; }).join("");
+         const series=[...(B?[{name:USERS[them],color:colB,points:g.versions[0].pb}]:[]), ...g.versions.map((v,i)=>({name:multi?v.ex.name:USERS[me], color:multi?pal[i%pal.length]:colA, points:v.pa}))];
+         return `<h3 style="font-size:15px;margin:12px 0 0">${head}</h3>${nows}${multi?legend(g.versions.map((v,i)=>({name:v.ex.name,color:pal[i%pal.length]}))):""}${lines(series,"kg")}`; };
+       const sorted=liftGroups.slice().sort((a,b)=>b.versions.reduce((n,v)=>n+v.pa.length,0)-a.versions.reduce((n,v)=>n+v.pa.length,0)); const top=sorted.slice(0,3), rest=sorted.slice(3);
+       return (B?legend([{name:USERS[me],color:colA},{name:USERS[them],color:colB}]):"")+top.map(one).join("")+(rest.length?`<details class="more"><summary>Show all lifts (${liftGroups.length})</summary>${rest.map(one).join("")}</details>`:"")+`<p class="sub small">Tap a dot to see its value.</p>`; })() : `<p class="empty">Charts appear once an exercise has been logged twice.</p>`}
+    ${assisted.length?`<h3 style="font-size:15px;margin:14px 0 0">Assisted machines · 輔助機</h3><p class="sub" style="margin:0">Kg of help. A line going down means you're getting stronger.</p>${assisted.map(a=>`<h3 style="font-size:14px;margin:8px 0 0">${esc(a.ex.name)}</h3>${lines([{name:USERS[me],color:colA,points:a.pa}],"kg")}`).join("")}`:""}</div>
   ${balanceCard(A, B, w4, inArea, me, them, colA, colB)}
   ${(()=>{ const runs=setsRows(A.logs).filter(r=>{ const e=findEx(r.exercise); return e?isRun(e):/run/.test(r.exercise); });
      if(!runs.length) return "";
@@ -1420,6 +1763,7 @@ function renderEditEx(dayId,i){
    ${(e.mode==="progress"||e.mode==="steady")? `<label class="f" for="e_steps">Weights your gym has (kg, separated by commas)</label><input class="t" id="e_steps" value="${esc((e.steps||[]).join(", "))}" data-efield="steps" data-day="${dayId}" data-i="${i}" inputmode="decimal">${f("start","Starting weight (kg)","text",'inputmode="decimal"')}`:""}
    <label class="f" for="e_photo">Photo file in gym-log/images</label><input class="t" id="e_photo" value="${esc(e.photo||"")}" data-efield="photo" data-day="${dayId}" data-i="${i}" placeholder="for example lat_pulldown.jpg">
    ${(e.mode==="progress"||e.mode==="steady"||e.mode==="bodyweight")?`<label class="f" for="e_equip">Equipment (how the weight is logged)</label><select class="t" id="e_equip" data-efield="equip" data-day="${dayId}" data-i="${i}">${Object.entries(EQUIP_TEXT).map(([k,[l]])=>`<option value="${k}" ${equipOf(e)===k?"selected":""}>${l}</option>`).join("")}</select><p class="sub">${esc((EQUIP_TEXT[equipOf(e)]||["",""])[1])}</p>`:""}
+   <label class="f" for="e_movement">Movement (so swaps and stage changes follow it)</label><select class="t" id="e_movement" data-efield="movement" data-day="${dayId}" data-i="${i}"><option value="">None</option>${Object.entries(MOVES).map(([k,m])=>`<option value="${k}" ${movementOf(e)===k?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
    <label class="f" for="e_area">Body area (for the Progress charts)</label><select class="t" id="e_area" data-efield="area" data-day="${dayId}" data-i="${i}">${[["","Automatic"],["upper","Upper body"],["lower","Lower body"],["core","Core"],["cardio","Cardio"],["other","Other"]].map(([v,l])=>`<option value="${v}" ${ (e.area||"")===v?"selected":""}>${l}</option>`).join("")}</select>
    <label class="f" for="e_cues">Form tips</label><textarea class="t" id="e_cues" data-efield="cues" data-day="${dayId}" data-i="${i}">${esc(e.cues||"")}</textarea>
    <label class="f" for="e_safety">Avoid-injury tips (one per line; leave empty for the built-in ones)</label><textarea class="t" id="e_safety" data-efield="safety" data-day="${dayId}" data-i="${i}" placeholder="${esc(safetyFor(e).join("\n"))}">${esc(e.safety||"")}</textarea>
@@ -1497,6 +1841,7 @@ document.addEventListener("click", async ev=>{
     loadCache().then(()=>{ render(); sync().then(render); }); return;
   }
   if(t.dataset.tips){ return openTips(t.dataset.tips); }
+  if(t.dataset.act==="swap"){ return openSwap(t.dataset.ex); }
   if(t.dataset.close!==undefined) return;
   if(t.dataset.step){
     const s=draft.ex[t.dataset.ex][+t.dataset.i]; const f=t.dataset.f; const ex=findEx(t.dataset.ex); const delta=num(t.dataset.step);
@@ -1533,6 +1878,8 @@ document.addEventListener("click", async ev=>{
   if(a==="deloadstart"){ const today=localISO(); await savePlanFields({lastDeload:today, deloadUntil:addDays(today,6), deloadSnoozeUntil:""}, "Lighter week started. Workouts are adjusted for the next 7 days."); draft=null; draftDay=null; render(); return; }
   if(a==="deloadlater"){ await savePlanFields({deloadSnoozeUntil:addDays(localISO(),6)}, "OK, I'll check again next week."); render(); return; }
   if(a==="deloadend"){ await savePlanFields({deloadUntil:addDays(localISO(),-1)}, "Lighter week ended."); draft=null; draftDay=null; render(); return; }
+  if(a==="usualyes"){ const slot=t.dataset.slot, cand=t.dataset.id; const shown=(draft.swaps&&draft.swaps[slot]&&draft.swaps[slot].id)||slot; return doSwap(shown, findEx(cand), "now", false); }
+  if(a==="usualno"){ LS.set(cacheKey(`usual_no_${t.dataset.slot}_${t.dataset.id}`), localISO()); renderDay(draftDay); return; }
   if(a==="stageapply") return applyStageNow();
   if(a==="stagelater"){ await savePlanFields({stageSnoozeUntil:addDays(localISO(),6)}, "OK, I'll remind you next week."); render(); return; }
   if(a==="saveplan"){ const v=$("#pl_start").value; if(!v){ toast("Pick a start date."); return; } await savePlanFields({planStart:weekStart(v)}, "Plan start saved"); renderSettings(false); return; }
@@ -1562,6 +1909,7 @@ document.addEventListener("change", ev=>{
     draft.date=v; reinitEmpty(); saveDraft(); renderDay(draftDay); return;
   }
   if(el.id==="p_cmp"){ compareOn=el.checked; LS.set("gt_compare",compareOn); renderProgress(); return; }
+  if(el.dataset.bar){ LS.set(cacheKey("bar_"+el.dataset.bar), num(el.value)); renderDay(draftDay); return; }
   if(el.dataset.kg){
     let v=el.value; if(v==="other"){ const x=prompt("Weight in kg"); if(x===null){ renderDay(draftDay); return; } v=num(x); }
     const arr=draft.ex[el.dataset.kg], i0=+el.dataset.i; arr[i0].kg=num(v);
@@ -1580,6 +1928,8 @@ document.addEventListener("input", ev=>{
   if(el.id==="notes" && draft){ draft.notes=el.value; saveDraft(); return; }
   if(el.id==="a_q"){ addFilter.q=el.value; const box=$("#a_list"); if(box) box.innerHTML=addListHTML(draftDay); return; }
 });
+/* remember when you close the first-sessions tips, so they stay closed while you log */
+document.addEventListener("toggle", ev=>{ const d=ev.target; if(d && d.dataset && d.dataset.cue && draft){ draft.tipsClosed=draft.tipsClosed||{}; if(d.open) delete draft.tipsClosed[d.dataset.cue]; else draft.tipsClosed[d.dataset.cue]=true; saveDraft(); } }, true);
 window.addEventListener("hashchange", render);
 
 /* ========= START ========= */
