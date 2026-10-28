@@ -32,6 +32,8 @@ Updating an existing install: upload the new `index.html` to `gymtracker` and th
 
 The app always shows what your number means, next to the weights.
 
+**Confirm once per exercise.** The first time you open a weighted exercise, it asks *How is the weight held or loaded?* (pin, plates on a machine, one dumbbell in each hand, one weight in both hands, barbell, Smith, kettlebell, assisted). The likely answer is marked; the sets appear after you pick. Your answer is saved in the routine file, so both phones know it. Past entries keep their numbers. Tap **Change** next to the logging line to correct it later. Built-in barbell, Smith, plate-loaded and assisted versions don't ask, because their name already says it. Without a connection the answer is kept on the phone and added at the next sync.
+
 | Equipment | You enter | The app shows |
 | --- | --- | --- |
 | Dumbbells, one in each hand | 5 | 5 each = 10 total |

@@ -181,6 +181,9 @@ details.cues ul{margin:4px 0 0;padding-left:20px}
 [data-swapwhen][aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:none}
 .sheetcard .chips{margin:8px 0}
 .libitem .btn{white-space:nowrap;flex:none}
+.equipask{margin:8px 12px 0;padding:10px 12px;border-radius:10px;background:var(--sunk);border-left:4px solid var(--warn)}
+.eqopt{display:flex;width:100%;text-align:left;gap:8px;margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;min-height:44px;cursor:pointer}
+.eqopt[aria-pressed="true"]{border:2px solid var(--accent)}
 </style>
 </head>
 <body>
@@ -553,6 +556,7 @@ LIBRARY.push(
  V("barbell_hip_thrust","Barbell hip thrust","槓鈴臀推","hip_thrust","lower","barbell",{bar:20,cues:"Upper back on a bench, bar on the hip crease with a pad. Drive the hips up until the body is straight, then lower.",safety:"Use a pad on the hips and roll the bar into place sitting down.\nAt the top, ribs down; don't arch the lower back.\nChin tucked, looking forward."}),
  V("machine_hip_thrust","Hip thrust machine","臀推機","hip_thrust","lower","plate",{steps:PLATE_STEPS,start:10,cues:"Sit with the upper back against the pad, belt over the hips. Drive the hips up until the body is straight. Count only the plates on one side; if your machine uses a stack, change the equipment to Stack machine.",safety:"Put the belt on the hip crease, not the belly.\nAt the top, ribs down: don't arch the lower back to lift higher."}),
  V("reverse_hyper","Reverse hyperextension","反向超人式機","back_extension","lower","machine",{steps:STACK_STEPS,start:10,repMin:10,repMax:12,cues:"Lie face down with the hips at the edge of the pad. Lift the legs until they line up with the body, then lower slowly.",safety:"Don't swing the legs up; go slowly.\nRise only until the body is straight; never arch past it."}),
+ V("db_squat","Dumbbell squat (one in each hand)","啞鈴深蹲（雙手各一）","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,cues:"Hold a dumbbell in each hand at your sides. Sit back and down, chest up, then stand by pushing through the heels.",safety:"Knees track over the toes; don't let them cave in.\nHeels stay down; keep the back flat.\nGo only as low as you can keep that shape."}),
  V("split_squat","Split squat","保加利亞／分腿蹲","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Back foot on a bench or the floor, front foot far enough forward. Lower straight down, then push through the front heel. Reps per leg.",safety:"Front knee tracks over the toes; don't let it cave in.\nHold onto something if balance is shaky."}),
  V("walking_lunge","Walking lunge","走路弓箭步","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Take a long step, lower the back knee toward the floor, push through the front foot into the next step. Reps per leg.",safety:"Front knee tracks over the toes.\nTake steps long enough that the front shin stays fairly upright.\nClear a straight path first."}),
  V("step_up","Step-up","登階","lunge","lower","dumbbell",{steps:DB_STEPS,start:5,repMin:8,repMax:10,cues:"Whole foot on a knee-height box. Stand up through the front heel, then lower slowly. Reps per leg.",safety:"Use a stable box; push with the top leg, not the back foot.\nStart with a lower step if the knee complains."}),
@@ -774,6 +778,7 @@ async function sync(){
     store.body = bd ? csvParse(bd.text) : [];
     for(const item of queue()) if(item.kind==="body") store.body.push(...csvParse(item.header+"\n"+item.lines.join("\n")+"\n"));
     store.synced=new Date().toISOString(); store.error=null; saveCache();
+    pushPendingChoices();
     if(!rt) store.error=`No routine file found at ${p.routines} in ${cfg.repo}.`;
   }catch(e){ store.error = navigator.onLine ? e.message : "Offline: showing the last saved copy."; }
 }
@@ -870,14 +875,14 @@ function initDraft(day, date){
   const saved=LS.get(draftKey(day.id), null);
   if(saved && (saved.created||saved.date)===today && (!date || date===saved.date)){ saved.extras=saved.extras||[]; saved.swaps=saved.swaps||{}; saved.tipsClosed=saved.tipsClosed||{}; saved.created=today; return saved; }
   const d={date:date||today, created:today, ex:{}, notes:"", extras:[], swaps:{}, tipsClosed:{}};
-  for(const ex of day.exercises) d.ex[ex.id]=initSets(ex, d.date, day.id);
+  for(const ex of day.exercises) d.ex[ex.id]=initSets(withChoice(ex), d.date, day.id);
   return d;
 }
 /* Today's list: extras added at the start (warm-ups), the routine, then extras added at the end. */
 function dayList(day){
   const ext=(draft&&draft.extras)||[];
   const sw=(draft&&draft.swaps)||{};
-  return [...ext.filter(x=>x.pos==="start").map(x=>x.ex), ...day.exercises.map(e=>sw[e.id]||e), ...ext.filter(x=>x.pos!=="start").map(x=>x.ex)];
+  return [...ext.filter(x=>x.pos==="start").map(x=>x.ex), ...day.exercises.map(e=>sw[e.id]||e), ...ext.filter(x=>x.pos!=="start").map(x=>x.ex)].map(withChoice);
 }
 let draft=null, draftDay=null;
 function saveDraft(){ if(draft && draftDay) LS.set(draftKey(draftDay), draft); }
@@ -927,7 +932,7 @@ function runCard(ex, last, done){
 }
 function exerciseCard(ex){
   if(isRun(ex)){ const last=lastBefore(ex.id, draft.date); return runCard(ex, last, savedOn(ex.id, draft.date, draftDay)); }
-  const last=lastBefore(ex.id, draft.date); let adv=advise(effEx(ex),last); const ph0=photosFor(ex)[0]||"";
+  const last=lastBefore(ex.id, draft.date); let adv=advise(effEx(ex),last); const ph0=photosFor(ex)[0]||""; const ask=needsEquip(ex);
   const light=lighterOn(draft.date);
   if(light && ex.mode!=="cardio" && ex.mode!=="intervals"){
     const n=Math.max(1,Math.ceil((ex.sets||1)/2)); const lk=(ex.mode==="progress"||ex.mode==="steady")? lightKgFor(ex, adv.kg) : 0;
@@ -963,13 +968,12 @@ function exerciseCard(ex){
       <div><div class="exname">${esc(ex.name)}${isExtra?` <span class="tag">Extra today</span>`:""}</div><div class="zh">${esc(ex.zh||"")}</div>
       <div class="target">${esc(light && ex.mode!=="cardio" && ex.mode!=="intervals" ? targetText({...ex, sets:Math.max(1,Math.ceil((ex.sets||1)/2))})+" · lighter" : targetText(ex))}${equipTag(ex)?` <span class="tag">${esc(equipTag(ex))}</span>`:""}</div><div class="lasttime">${esc(lastTxt)}</div></div></div>
     <div class="tip ${adv.kind==="up"?"up":""}">${esc(cm==="reps"?`${ex.sets} sets: count the reps you do in each.`:adv.text)}</div>
-    ${logLineHTML(ex,sets)}${usualHTML(ex)}
+    ${ask?equipAskHTML(ex):logLineHTML(ex,sets)}${usualHTML(ex)}
     ${cm?`<div class="seg countseg" role="group" aria-label="Count by"><button data-act="countmode" data-ex="${esc(ex.id)}" data-v="time" aria-pressed="${cm==="time"}">Time</button><button data-act="countmode" data-ex="${esc(ex.id)}" data-v="reps" aria-pressed="${cm==="reps"}">Reps</button></div>`:""}
     ${off?`<p class="saved">✓ Saved ${draft.date===localISO()?"today":"for this date"}: ${esc(done.map(s=> ex.mode==="time"?(s.seconds>0?`${s.seconds}s`:`${s.reps} reps`): ex.mode==="cardio"?`${Math.round(s.seconds/60)} min`: ex.mode==="intervals"?`${s.reps} rounds`: (s.kg?`${fmtKg(s.kg)}×${s.reps}`:`${s.reps}`)).join(", "))} <button class="linkbtn" data-go="editlog/${encodeURIComponent(ex.id)}/${draft.date}">Edit</button></p>`:""}
     ${cuesHTML(ex)}
-    ${barHTML(ex)}
-    <div class="sets">${rows}</div>
-    <div class="setbtns">${(multi||!sets.length)?`<button class="btn small" data-act="addset" data-ex="${ex.id}">Add set</button><button class="btn small" data-act="delset" data-ex="${ex.id}">Remove set</button>`:""}${last?`<button class="btn small" data-act="same" data-ex="${ex.id}">Copy last time</button>`:""}${isSwappable(ex)?`<button class="btn small" data-act="swap" data-ex="${esc(ex.id)}">Swap</button>`:""}<button class="btn small" data-go="history/${encodeURIComponent(ex.id)}">History</button>${isExtra?`<button class="btn small danger" data-act="rmextra" data-ex="${esc(ex.id)}">Remove</button>`:""}</div>
+    ${ask?"":barHTML(ex)+`<div class="sets">${rows}</div>`}
+    <div class="setbtns">${(!ask&&(multi||!sets.length))?`<button class="btn small" data-act="addset" data-ex="${ex.id}">Add set</button><button class="btn small" data-act="delset" data-ex="${ex.id}">Remove set</button>`:""}${(last&&!ask)?`<button class="btn small" data-act="same" data-ex="${ex.id}">Copy last time</button>`:""}${isSwappable(ex)?`<button class="btn small" data-act="swap" data-ex="${esc(ex.id)}">Swap</button>`:""}<button class="btn small" data-go="history/${encodeURIComponent(ex.id)}">History</button>${isExtra?`<button class="btn small danger" data-act="rmextra" data-ex="${esc(ex.id)}">Remove</button>`:""}</div>
   </section>`;
 }
 function targetText(ex){
@@ -1001,7 +1005,7 @@ function setVal(exId,i,field,raw){
   else s[field] = raw===""?"":Math.max(0,num(raw));
   saveDraft();
 }
-function findEx(exId){
+function findEx0(exId){
   for(const d of store.routines?.days||[]) for(const e of d.exercises) if(e.id===exId) return e;
   const x=(draft&&draft.extras||[]).find(x=>x.ex.id===exId); if(x) return x.ex;
   const sw=draft&&draft.swaps&&Object.values(draft.swaps).find(x=>x.id===exId); if(sw) return sw;
@@ -1375,6 +1379,67 @@ function versionsOf(ex){
   for(const e of lib()) if(movementOf(e)===mv && (e.mode==="progress"||e.mode==="steady"||e.mode==="bodyweight")) push(e);
   return out;
 }
+
+/* ---- confirm how the weight is held or loaded ----
+   Every weighted exercise asks once. The answer is saved in the routine file (equipChoice), so both phones know it.
+   Without a connection it's kept on this phone and sent with the next sync. */
+const EQUIP_ASK=[
+ ["machine","Pin on a weight stack or cable","Log the pin: pin on 25 → 25"],
+ ["plate","Plates on a machine","Log one side: 10 on each side → 10"],
+ ["dumbbell","One dumbbell in each hand","Log one dumbbell: 5 in each hand → 5"],
+ ["dumbbell1","One weight held with both hands","Log that one weight: one 12 kg dumbbell → 12"],
+ ["barbell","Barbell (bar + plates)","Log the bar and plates together"],
+ ["smith","Smith machine","Log the bar and plates together"],
+ ["kettlebell","Kettlebell","Log the kettlebell's weight"],
+ ["assisted","Assisted machine (the weight helps you)","Log the help; less help = stronger"]];
+const INHERENT=["barbell","smith","plate","assisted"];   // built-in versions whose name already says how they're loaded
+const pendingKey=()=>cacheKey("equip_pending");
+function equipChoices(){ return Object.assign({}, (store.routines&&store.routines.equipChoice)||{}, LS.get(pendingKey(),{})); }
+function withChoice(ex){
+  if(!ex) return ex; const ch=equipChoices()[ex.id]; if(!ch) return ex;
+  if(ex.equip===ch && ex.equipConfirmed) return ex;
+  const o=Object.assign({}, ex, {equip:ch, equipConfirmed:true});
+  if((ch==="barbell"||ch==="smith") && o.bar==null) o.bar = ch==="smith"?15:20;
+  if(ch!=="barbell" && ch!=="smith") delete o.bar;
+  if((!o.steps || !o.steps.length) && DEFAULT_STEPS[ch]) o.steps=DEFAULT_STEPS[ch].slice();
+  return o;
+}
+function needsEquip(ex){
+  if(!ex || !(ex.mode==="progress"||ex.mode==="steady") || isRun(ex)) return false;
+  if(ex.equipConfirmed || equipChoices()[ex.id]) return askAgain[ex.id]===true;
+  const b=LIBRARY.find(x=>x.id===ex.id);
+  if(b && INHERENT.includes(b.equip) && equipOf(ex)===b.equip) return askAgain[ex.id]===true;
+  return true;
+}
+const askAgain={};
+function equipAskHTML(ex){
+  const guess=equipOf(withChoice(ex)); const had=sessionCount(ex.id)>0;
+  return `<div class="equipask" role="group" aria-label="How is the weight held or loaded for ${esc(ex.name)}?">
+    <b>How is the weight held or loaded?</b><span class="zh"> · 重量怎麼拿或怎麼掛？</span>
+    <p class="sub" style="margin:2px 0 6px">Pick once; the app remembers it.${had?" Your past entries keep their numbers.":""}</p>
+    ${EQUIP_ASK.map(([k,l,h])=>`<button class="eqopt" data-act="equipset" data-ex="${esc(ex.id)}" data-v="${k}" aria-pressed="${k===guess}"><span><b>${esc(l)}</b>${k===guess?` <span class="tag">likely</span>`:""}<br><span class="sub">${esc(h)}</span></span></button>`).join("")}
+  </div>`;
+}
+async function chooseEquip(id, eq){
+  const pend=LS.get(pendingKey(),{}); pend[id]=eq; LS.set(pendingKey(), pend); delete askAgain[id];
+  if(draft && draft.ex[id] && !(draft.ex[id]||[]).some(s=>num(s.reps)>0||num(s.seconds)>0)){ const ex=findEx(id); if(ex) draft.ex[id]=initSets(ex, draft.date, draftDay); saveDraft(); }
+  renderDay(draftDay);
+  const ok=await pushPendingChoices();
+  toast(ok ? `Saved: ${EQUIP_ASK.find(x=>x[0]===eq)[1]}` : "Saved on this phone. It's added to your routine at the next sync.");
+}
+async function pushPendingChoices(){
+  const pend=LS.get(pendingKey(),{}); if(!Object.keys(pend).length) return true;
+  if(!store.routines || !cfg.token) return false;
+  try{
+    const next=JSON.parse(JSON.stringify(store.routines)); next.equipChoice=Object.assign({}, next.equipChoice||{}, pend);
+    for(const d of next.days||[]) for(const e of d.exercises) if(pend[e.id]){ e.equip=pend[e.id]; e.equipConfirmed=true; }
+    await putRoutines(next, `confirm how the weight is logged (${Object.keys(pend).join(", ")})`);
+    const left=LS.get(pendingKey(),{}); for(const k of Object.keys(pend)) if(left[k]===pend[k]) delete left[k]; LS.set(pendingKey(), left);
+    return true;
+  }catch(e){ return false; }
+}
+function findEx(exId){ return withChoice(findEx0(exId)); }
+
 /* a routine entry without its own how-to or safety text borrows them from the library (built-in or library.json) */
 function fillText(ex){ if(!ex || (ex.cues && ex.safety)) return ex; const l=lib().find(x=>x.id===ex.id); return l ? Object.assign({}, ex, {cues:ex.cues||l.cues||"", safety:ex.safety||l.safety||""}) : ex; }
 function isSwappable(ex){ return !!ex && !isRun(ex) && (ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight"); }
@@ -1396,7 +1461,8 @@ function barHTML(ex){
 function logLineHTML(ex, sets){
   if(!(ex.mode==="progress"||ex.mode==="steady"||ex.mode==="bodyweight")) return "";
   const s=(sets||[]).find(x=>num(x.kg)>0)||(sets||[])[0]||{};
-  const t=loggingLine(ex, s.kg, barOf(ex)); return t ? `<div class="logline"><b>Logging:</b> ${esc(t)}</div>` : "";
+  const t=loggingLine(ex, s.kg, barOf(ex)); const ch=(ex.mode==="progress"||ex.mode==="steady")?` <button class="linkbtn" data-act="equipask" data-ex="${esc(ex.id)}">Change</button>`:"";
+  return t ? `<div class="logline"><b>Logging:</b> ${esc(t)}${ch}</div>` : "";
 }
 function cuesHTML(ex){
   ex=fillText(ex);
@@ -1404,7 +1470,7 @@ function cuesHTML(ex){
   const how = EQUIP_TEXT[equipOf(ex)];
   if(!ex.cues && !first) return "";
   const open = first && !closed;
-  return `<details class="cues" data-cue="${esc(ex.id)}" ${open?"open":""}><summary>Form tips${first?" · first sessions":""}</summary>${ex.cues?`<p>${esc(ex.cues)}</p>`:""}${first?`${how?`<p><b>How to log it:</b> ${esc(how[1])}</p>`:""}<ul>${safetyFor(ex).slice(0,3).map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`:""}</details>`;
+  return `<details class="cues" data-cue="${esc(ex.id)}" ${open?"open":""}><summary>Form tips${first?" · first sessions":""}</summary>${ex.cues?`<p>${esc(ex.cues)}</p>`:""}${first?`${how&&!needsEquip(ex)?`<p><b>How to log it:</b> ${esc(how[1])}</p>`:""}<ul>${safetyFor(ex).slice(0,3).map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`:""}</details>`;
 }
 /* the routine slot an exercise on today's list stands in for (it may be a swap for today) */
 function slotFor(ex){
@@ -1429,7 +1495,7 @@ async function putRoutines(next, msg){
 }
 function customVersion(base, name, equip){
   const mv=movementOf(base); const plain=(equip==="bodyweight"||equip==="band");
-  const o={id:"x:"+name, name, zh:"", area:base.area||MOVES[mv]?.area||areaOf(base.id,""), mode:plain?"bodyweight":"progress", equip, sets:base.sets||3, repMin:base.repMin||8, repMax:base.repMax||12, cues:"", custom:true};
+  const o={id:"x:"+name, name, zh:"", area:base.area||MOVES[mv]?.area||areaOf(base.id,""), mode:plain?"bodyweight":"progress", equip, sets:base.sets||3, repMin:base.repMin||8, repMax:base.repMax||12, cues:"", custom:true, equipConfirmed:true};
   if(mv) o.movement=mv;
   if(DEFAULT_STEPS[equip]) o.steps=DEFAULT_STEPS[equip].slice();
   if(equip==="barbell") o.bar=20; if(equip==="smith") o.bar=15;
@@ -1774,6 +1840,7 @@ function setEditField(dayId,i,k,v){
   if(["sets","repMin","repMax","target","start"].includes(k)) e[k]= v===""? undefined : num(v);
   else if(k==="steps") e.steps = v.split(/[,\s]+/).filter(x=>x!=="" && isFinite(parseFloat(x))).map(num).filter(x=>x>=0).sort((a,b)=>a-b);
   else e[k]=v;
+  if(k==="equip"){ e.equipConfirmed=true; edit.equipChoice=Object.assign({}, edit.equipChoice||{}, {[e.id]:v}); }
   if(k==="mode") renderEditEx(dayId,i);
 }
 async function saveRoutines(){
@@ -1879,6 +1946,8 @@ document.addEventListener("click", async ev=>{
   if(a==="deloadlater"){ await savePlanFields({deloadSnoozeUntil:addDays(localISO(),6)}, "OK, I'll check again next week."); render(); return; }
   if(a==="deloadend"){ await savePlanFields({deloadUntil:addDays(localISO(),-1)}, "Lighter week ended."); draft=null; draftDay=null; render(); return; }
   if(a==="usualyes"){ const slot=t.dataset.slot, cand=t.dataset.id; const shown=(draft.swaps&&draft.swaps[slot]&&draft.swaps[slot].id)||slot; return doSwap(shown, findEx(cand), "now", false); }
+  if(a==="equipset") return chooseEquip(t.dataset.ex, t.dataset.v);
+  if(a==="equipask"){ askAgain[t.dataset.ex]=true; renderDay(draftDay); return; }
   if(a==="usualno"){ LS.set(cacheKey(`usual_no_${t.dataset.slot}_${t.dataset.id}`), localISO()); renderDay(draftDay); return; }
   if(a==="stageapply") return applyStageNow();
   if(a==="stagelater"){ await savePlanFields({stageSnoozeUntil:addDays(localISO(),6)}, "OK, I'll remind you next week."); render(); return; }
